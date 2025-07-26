@@ -1,17 +1,18 @@
 import streamlit as st
 import pandas as pd
+from io import BytesIO
 
-# —————— Configuración de la página ——————
+# —————— Configuración general ——————
 st.set_page_config(page_title="Reordenador Excel MobilServ v2.0", layout="wide")
 st.title("📊 Reordenador Excel a formato MobilServ – Versión 2.0")
 st.markdown("**Creado por:** Javier Parada  \n**Ingeniero de Soporte en Campo**")
 
-# —————— Instrucciones ——————
 st.markdown("""
 ### 🧾 Instrucciones de uso:
 1. Sube el archivo Excel (.xlsx) con los datos originales.
-2. El sistema verificará que los encabezados no hayan sido modificados.
-3. Si todo está correcto, se generará una nueva tabla solo con las columnas útiles.
+2. El sistema validará que los encabezados no hayan sido modificados.
+3. Visualiza las columnas verificadas desde un desplegable.
+4. Descarga el nuevo archivo limpio y ordenado.
 """)
 
 # —————— Utilitario: letra columna Excel → índice 0-based ——————
@@ -21,7 +22,7 @@ def col_letter_to_index(letter: str) -> int:
         idx = idx * 26 + (ord(c) - ord("A") + 1)
     return idx - 1
 
-# —————— Diccionario de columnas esperadas (Letra → Nombre) ——————
+# —————— Diccionario de columnas esperadas ——————
 columnas_esperadas = {
     "A": "NOMBRE_CLIENTE", "Y": "ESTADO", "H": "FECHA_INFORME", "U": "COMPONENTE",
     "X": "DESCRIPTOR_COMPONENTE", "Z": "NIVEL_DE_SERVICIO", "V": "MARCA_COMPONENTE",
@@ -55,8 +56,8 @@ if uploaded:
     errores = []
     columnas_validas = []
     nombres_validos = []
+    resumen_validacion = []
 
-    # — Verificar que cada letra tenga el encabezado correcto —
     for letra, nombre_esperado in columnas_esperadas.items():
         idx = col_letter_to_index(letra)
         if idx < len(columnas_reales):
@@ -64,23 +65,40 @@ if uploaded:
             if nombre_real == nombre_esperado.strip():
                 columnas_validas.append(idx)
                 nombres_validos.append(nombre_real)
+                resumen_validacion.append(f"✅ Columna {letra} = \"{nombre_real}\"")
             else:
                 errores.append(f"- Columna {letra}: se esperaba **\"{nombre_esperado}\"**, se encontró **\"{nombre_real}\"**")
         else:
             errores.append(f"- Columna {letra}: se esperaba **\"{nombre_esperado}\"**, pero no existe en el archivo")
 
-    # — Mostrar errores o continuar —
     if errores:
-        st.error("❌ Las siguientes columnas tienen encabezados modificados o están en una posición incorrecta:")
+        st.error("❌ Las siguientes columnas tienen errores de posición o nombre:")
         st.markdown("\n".join(errores))
         st.stop()
     else:
-        st.success("✅ Encabezados verificados correctamente. Procediendo con las columnas válidas...")
+        st.success("✅ Todas las columnas han sido validadas correctamente.")
 
-        # — Extraer solo las columnas válidas y reordenadas —
+        # Desplegable con resumen de columnas validadas
+        with st.expander("🔍 Ver columnas validadas"):
+            for linea in resumen_validacion:
+                st.markdown(linea)
+
+        # Crear nuevo DataFrame limpio con columnas válidas
         df_resultado = df_original.iloc[:, columnas_validas]
         df_resultado.columns = nombres_validos
 
-        # — Vista previa del nuevo archivo —
-        st.subheader("✅ Vista previa – Archivo limpio con columnas válidas")
+        # Vista previa
+        st.subheader("📋 Vista previa – Archivo limpio y ordenado")
         st.dataframe(df_resultado.head(10))
+
+        # Descargar archivo
+        buffer = BytesIO()
+        df_resultado.to_excel(buffer, index=False, engine='openpyxl')
+        buffer.seek(0)
+        st.download_button(
+            label="📥 Descargar archivo ordenado",
+            data=buffer,
+            file_name="mobilserv_ordenado.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
