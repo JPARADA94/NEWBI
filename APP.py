@@ -81,3 +81,27 @@ if uploaded:
     else:
         st.success("✅ Verificación completada: los encabezados están correctos. Puedes continuar con el reordenamiento.")
         # Aquí puedes continuar con la lógica de reorganización
+
+# —————— BLOQUE 2 – Reordenamiento de columnas útiles ——————
+from mapeo_columnas import MOVIMIENTOS  # Asegúrate de tener este archivo .py
+
+# 1. Leer nuevamente el archivo completo (ya verificado previamente)
+df = pd.read_excel(uploaded, header=0, dtype=str)
+
+st.subheader("👁️ Vista previa – Datos originales")
+st.dataframe(df.head(10))
+
+# 2. Crear DataFrame destino con el número de columnas máximas necesarias
+max_dest_idx = max(col_letter_to_index(dest) for _, dest in MOVIMIENTOS)
+df_resultado = pd.DataFrame(index=df.index, columns=range(max_dest_idx + 1))
+
+# 3. Reordenar según MOVIMIENTOS (letra columna origen → destino)
+for origen, destino in MOVIMIENTOS:
+    idx_origen = col_letter_to_index(origen)
+    idx_destino = col_letter_to_index(dest)
+    if idx_origen < df.shape[1]:
+        df_resultado.iloc[:, idx_destino] = df.iloc[:, idx_origen]
+    else:
+        df_resultado.iloc[:, idx_destino] = None  # columna origen no existe, se rellena con NaN
+
+st.success("✅ Reordenamiento realizado. Columnas no requeridas han sido eliminadas.")
