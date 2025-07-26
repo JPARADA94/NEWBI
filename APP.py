@@ -3,16 +3,16 @@ import pandas as pd
 from io import BytesIO
 
 # —————— Configuración general ——————
-st.set_page_config(page_title="Reordenador Excel MobilServ v2.0", layout="wide")
-st.title("📊 Reordenador Excel a formato MobilServ – Versión 2.0")
-st.markdown("**Creado por:** Javier Parada  \n**Ingeniero de Soporte en Campo**")
+st.set_page_config(page_title="Validación de Encabezados – Grupo Soporte Mobil", layout="wide")
+st.title("📊 Validación de Encabezados – Grupo de Ingenieros de Soporte en Campo (Mobil)")
+st.markdown("**Responsables:** Grupo de Soporte en Campo – Mobil")
 
 st.markdown("""
 ### 🧾 Instrucciones de uso:
 1. Sube el archivo Excel (.xlsx) con los datos originales.
 2. El sistema validará que los encabezados no hayan sido modificados.
-3. Visualiza las columnas verificadas desde un desplegable.
-4. Descarga el nuevo archivo limpio y ordenado.
+3. Visualiza los encabezados correctos desde un desplegable.
+4. Descarga el nuevo archivo limpio y ordenado si todo es correcto.
 """)
 
 # —————— Utilitario: letra columna Excel → índice 0-based ——————
@@ -21,6 +21,13 @@ def col_letter_to_index(letter: str) -> int:
     for c in letter.upper():
         idx = idx * 26 + (ord(c) - ord("A") + 1)
     return idx - 1
+
+def col_index_to_letter(idx: int) -> str:
+    letter = ""
+    while idx >= 0:
+        letter = chr(idx % 26 + ord('A')) + letter
+        idx = idx // 26 - 1
+    return letter
 
 # —————— Diccionario de columnas esperadas ——————
 columnas_esperadas = {
@@ -67,38 +74,49 @@ if uploaded:
                 nombres_validos.append(nombre_real)
                 resumen_validacion.append(f"✅ Columna {letra} = \"{nombre_real}\"")
             else:
-                errores.append(f"- Columna {letra}: se esperaba **\"{nombre_esperado}\"**, se encontró **\"{nombre_real}\"**")
+                # Buscar en todas las columnas si el encabezado fue movido
+                if nombre_esperado in columnas_reales:
+                    nueva_pos = columnas_reales.index(nombre_esperado)
+                    nueva_letra = col_index_to_letter(nueva_pos)
+                    errores.append(
+                        f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero se encontró \"{nombre_real}\". "
+                        f"⚠️ Encontrado en columna {nueva_letra}."
+                    )
+                else:
+                    errores.append(
+                        f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero se encontró \"{nombre_real}\". "
+                        f"⚠️ No se encontró en ninguna otra columna."
+                    )
         else:
-            errores.append(f"- Columna {letra}: se esperaba **\"{nombre_esperado}\"**, pero no existe en el archivo")
+            errores.append(f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero no existe en el archivo.")
 
     if errores:
-        st.error("❌ Las siguientes columnas tienen errores de posición o nombre:")
+        st.error("❌ Las siguientes columnas tienen errores:")
         st.markdown("\n".join(errores))
         st.stop()
     else:
         st.success("✅ Todas las columnas han sido validadas correctamente.")
 
-        # Desplegable con resumen de columnas validadas
+        # Mostrar resumen
         with st.expander("🔍 Ver columnas validadas"):
             for linea in resumen_validacion:
                 st.markdown(linea)
 
-        # Crear nuevo DataFrame limpio con columnas válidas
+        # Crear archivo limpio
         df_resultado = df_original.iloc[:, columnas_validas]
         df_resultado.columns = nombres_validos
 
-        # Vista previa
         st.subheader("📋 Vista previa – Archivo limpio y ordenado")
         st.dataframe(df_resultado.head(10))
 
-        # Descargar archivo
+        # Descargar
         buffer = BytesIO()
         df_resultado.to_excel(buffer, index=False, engine='openpyxl')
         buffer.seek(0)
         st.download_button(
             label="📥 Descargar archivo ordenado",
             data=buffer,
-            file_name="mobilserv_ordenado.xlsx",
+            file_name="archivo_ordenado.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
