@@ -3,18 +3,17 @@ import pandas as pd
 from io import BytesIO
 
 # —————— Configuración general ——————
-st.set_page_config(page_title="Validación de Encabezados – Consolidado Excel v3.2", layout="wide")
-st.title("📊 Validación de Encabezados – Consolidado Excel – Mobil v3.2")
+st.set_page_config(page_title="Validación Global – Excel Consolidado v4.0", layout="wide")
+st.title("📊 Validación Global de Encabezados – Excel Consolidado – Mobil v4.0")
 st.markdown("**Responsables:** Grupo de Soporte en Campo – Mobil")
 
 st.markdown("""
 ### 🧾 Instrucciones de uso:
-1. Sube uno o varios archivos Excel (.xlsx) con los datos originales.
-2. El sistema validará que los encabezados no hayan sido modificados.
-3. Para cada archivo:
-   - Visualiza las columnas validadas.
-   - Detecta columnas extra con datos y selecciona si deseas incluirlas.
-4. Todos los archivos correctos se **consolidarán en un único Excel final**.
+1. Sube **uno o varios archivos Excel (.xlsx)**.
+2. El sistema unirá todos los archivos en un solo conjunto.
+3. Validará los encabezados sobre el conjunto completo.
+4. Detectará columnas extra con datos y permitirá incluirlas.
+5. Generará **un único archivo Excel consolidado**.
 """)
 
 # —————— Funciones utilitarias ——————
@@ -101,106 +100,107 @@ columnas_esperadas = {
 }
 
 # —————— Subida de múltiples archivos ——————
-uploaded_files = st.file_uploader("📤 Sube uno o varios archivos Excel (.xlsx):", type="xlsx", accept_multiple_files=True)
+uploaded_files = st.file_uploader(
+    "📤 Sube uno o varios archivos Excel (.xlsx):",
+    type="xlsx",
+    accept_multiple_files=True
+)
 
 if uploaded_files:
-    df_consolidado = pd.DataFrame()  # DataFrame único final
-
+    # Concatenar todos los archivos en un solo DataFrame
+    dataframes = []
     for uploaded in uploaded_files:
-        st.markdown(f"---\n## 📂 Procesando archivo: **{uploaded.name}**")
-        df_original = pd.read_excel(uploaded, header=0, dtype=str)
-        columnas_reales = df_original.columns.tolist()
+        df = pd.read_excel(uploaded, header=0, dtype=str)
+        df["Archivo_Origen"] = uploaded.name
+        dataframes.append(df)
+    df_global = pd.concat(dataframes, ignore_index=True)
+    columnas_reales = df_global.columns.tolist()
 
-        errores = []
-        columnas_validas = []
-        nombres_validos = []
-        resumen_validacion = []
+    # ——— Validación de columnas esperadas sobre el global ———
+    errores = []
+    columnas_validas = []
+    nombres_validos = []
+    resumen_validacion = []
 
-        # ——— Validación de columnas esperadas ———
-        for letra, nombre_esperado in columnas_esperadas.items():
-            idx = col_letter_to_index(letra)
-            if idx < len(columnas_reales):
-                nombre_real = columnas_reales[idx].strip()
-                if nombre_real == nombre_esperado.strip():
-                    columnas_validas.append(idx)
-                    nombres_validos.append(nombre_real)
-                    resumen_validacion.append(f"✅ Columna {letra} = \"{nombre_real}\"")
+    for letra, nombre_esperado in columnas_esperadas.items():
+        idx = col_letter_to_index(letra)
+        if idx < len(columnas_reales):
+            nombre_real = columnas_reales[idx].strip()
+            if nombre_real == nombre_esperado.strip():
+                columnas_validas.append(idx)
+                nombres_validos.append(nombre_real)
+                resumen_validacion.append(f"✅ Columna {letra} = \"{nombre_real}\"")
+            else:
+                if nombre_esperado in columnas_reales:
+                    nueva_pos = columnas_reales.index(nombre_esperado)
+                    nueva_letra = col_index_to_letter(nueva_pos)
+                    errores.append(
+                        f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero se encontró \"{nombre_real}\". "
+                        f"⚠️ Encontrado en columna {nueva_letra}."
+                    )
                 else:
-                    if nombre_esperado in columnas_reales:
-                        nueva_pos = columnas_reales.index(nombre_esperado)
-                        nueva_letra = col_index_to_letter(nueva_pos)
-                        errores.append(
-                            f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero se encontró \"{nombre_real}\". "
-                            f"⚠️ Encontrado en columna {nueva_letra}."
-                        )
-                    else:
-                        errores.append(
-                            f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero se encontró \"{nombre_real}\". "
-                            f"⚠️ No se encontró en ninguna otra columna."
-                        )
-            else:
-                errores.append(f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero no existe en el archivo.")
-
-        if errores:
-            st.error(f"❌ El archivo **{uploaded.name}** tiene errores y será omitido.")
-            st.markdown("\n".join(errores))
-            continue
+                    errores.append(
+                        f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero se encontró \"{nombre_real}\". "
+                        f"⚠️ No se encontró en ninguna otra columna."
+                    )
         else:
-            st.success(f"✅ {uploaded.name} validado correctamente")
+            errores.append(f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero no existe en el archivo.")
 
-            with st.expander("🔍 Ver columnas validadas"):
-                for linea in resumen_validacion:
-                    st.markdown(linea)
+    if errores:
+        st.error("❌ Las siguientes columnas tienen errores en el conjunto global:")
+        st.markdown("\n".join(errores))
+    else:
+        st.success("✅ Todas las columnas han sido validadas correctamente en el conjunto global.")
 
-            df_resultado = df_original.iloc[:, columnas_validas]
-            df_resultado.columns = nombres_validos
-            df_resultado["Archivo_Origen"] = uploaded.name
+        with st.expander("🔍 Ver columnas validadas"):
+            for linea in resumen_validacion:
+                st.markdown(linea)
 
-            # —————— Detectar columnas no movidas con datos ——————
-            st.subheader("📌 Columnas NO movidas que contienen datos")
-            columnas_restantes = [i for i in range(len(columnas_reales)) if i not in columnas_validas]
+        # ——— Crear DataFrame final solo con columnas validadas ———
+        df_resultado = df_global.iloc[:, columnas_validas]
+        df_resultado.columns = nombres_validos
+        df_resultado["Archivo_Origen"] = df_global["Archivo_Origen"]
 
-            reporte_columnas_extra = []
-            for idx in columnas_restantes:
-                if df_original.iloc[1:, idx].notna().sum() > 0:
-                    reporte_columnas_extra.append({
-                        "Letra Excel": col_index_to_letter(idx),
-                        "Encabezado": columnas_reales[idx],
-                        "Ubicación Excel": f"Columna {col_index_to_letter(idx)}",
-                        "Index": idx
-                    })
+        # —————— Detectar columnas no mapeadas con datos ——————
+        st.subheader("📌 Columnas NO movidas que contienen datos (Global)")
+        columnas_restantes = [i for i in range(len(columnas_reales)) if i not in columnas_validas]
 
-            if reporte_columnas_extra:
-                df_reporte = pd.DataFrame(reporte_columnas_extra)
-                st.dataframe(df_reporte[["Letra Excel", "Encabezado", "Ubicación Excel"]])
+        reporte_columnas_extra = []
+        for idx in columnas_restantes:
+            if df_global.iloc[1:, idx].notna().sum() > 0:
+                reporte_columnas_extra.append({
+                    "Letra Excel": col_index_to_letter(idx),
+                    "Encabezado": columnas_reales[idx],
+                    "Ubicación Excel": f"Columna {col_index_to_letter(idx)}",
+                    "Index": idx
+                })
 
-                opciones_extra = {f"{row['Letra Excel']} – {row['Encabezado']}": row['Index'] for _, row in df_reporte.iterrows()}
-                seleccionadas = st.multiselect(
-                    f"Selecciona las columnas extra que deseas incluir para {uploaded.name}:",
-                    options=list(opciones_extra.keys())
-                )
+        if reporte_columnas_extra:
+            df_reporte = pd.DataFrame(reporte_columnas_extra)
+            st.dataframe(df_reporte[["Letra Excel", "Encabezado", "Ubicación Excel"]])
 
-                if seleccionadas:
-                    idx_seleccionados = [opciones_extra[sel] for sel in seleccionadas]
-                    df_extra = df_original.iloc[:, idx_seleccionados]
-                    df_resultado = pd.concat([df_resultado, df_extra], axis=1)
-            else:
-                st.info("No hay columnas extra con datos.")
+            opciones_extra = {f"{row['Letra Excel']} – {row['Encabezado']}": row['Index'] for _, row in df_reporte.iterrows()}
+            seleccionadas = st.multiselect(
+                "Selecciona las columnas extra que deseas incluir en el Excel final:",
+                options=list(opciones_extra.keys())
+            )
 
-            # Agregar al consolidado
-            df_consolidado = pd.concat([df_consolidado, df_resultado], ignore_index=True)
+            if seleccionadas:
+                idx_seleccionados = [opciones_extra[sel] for sel in seleccionadas]
+                df_resultado = pd.concat([df_resultado, df_global.iloc[:, idx_seleccionados]], axis=1)
+        else:
+            st.info("No hay columnas extra con datos en el conjunto global.")
 
-    # —————— Descargar archivo consolidado ——————
-    if not df_consolidado.empty:
-        st.subheader("📋 Vista previa – Archivo consolidado final")
-        st.dataframe(df_consolidado.head(10))
+        # —————— Descargar archivo consolidado final ——————
+        st.subheader("📋 Vista previa – Archivo Final")
+        st.dataframe(df_resultado.head(10))
 
         buffer = BytesIO()
-        df_consolidado.to_excel(buffer, index=False, engine='openpyxl')
+        df_resultado.to_excel(buffer, index=False, engine='openpyxl')
         buffer.seek(0)
 
         st.download_button(
-            label="📥 Descargar Excel Consolidado",
+            label="📥 Descargar Excel Final Consolidado",
             data=buffer,
             file_name="archivo_consolidado.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
