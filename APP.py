@@ -47,11 +47,11 @@ columnas_esperadas = {
     "M": "CANTIDAD_ADICIONADA",
     "N": "UNIDAD_CANTIDAD_ADICIONADA",
     "O": "PRODUCTO",
-    "P": "TIPO_PRODUCTO",  # Nueva
-    "Q": "EQUIPO",         # Nueva
-    "R": "TIPO_EQUIPO",    # Nueva
-    "S": "MARCA_EQUIPO",   # Nueva
-    "T": "MODELO_EQUIPO",  # Nueva
+    "P": "TIPO_PRODUCTO",  
+    "Q": "EQUIPO",         
+    "R": "TIPO_EQUIPO",    
+    "S": "MARCA_EQUIPO",   
+    "T": "MODELO_EQUIPO",  
     "U": "COMPONENTE",
     "V": "MARCA_COMPONENTE",
     "W": "MODELO_COMPONENTE",
@@ -96,7 +96,22 @@ columnas_esperadas = {
     "ER": "CONTENIDO GLICOL  - 105",
     "PH": "VISCOSIDAD A 100 °C - 13",
     "PI": "VISCOSIDAD A 40 °C - 14",
-    "CE": "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51"  # Nueva
+    "CE": "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51"  
+    "AD": "AGUA CUALITATIVA (PLANCHA) - 360",
+    "AG": "AGUA LIBRE - 416",
+    "AK": "ANÁLISIS ANTIOXIDANTES (AMINA) - 44",
+    "AL": "ANÁLISIS ANTIOXIDANTES (FENOL) - 45",
+    "BV": "COBRE (CU) - 119",
+    "GT": "ESPUMA SEC 1 - ESTABILIDAD - 60",
+    "GU": "ESPUMA SEC 1 - TENDENCIA - 59",
+    "HK": "ESTAÑO (SN) - 37",
+    "IS": "**ÍNDICE VISCOSIDAD - 359",
+    "NW": "RPVOT - 10",
+    "NY": "SEPARABILIDAD AGUA A 54 °C (ACEITE) - 6",
+    "NZ": "SEPARABILIDAD AGUA A 54 °C (AGUA) - 7",
+    "OA": "SEPARABILIDAD AGUA A 54 °C (EMULSIÓN) - 8",
+    "OB": "SEPARABILIDAD AGUA A 54 °C (TIEMPO) - 83",
+    "PD": "**ULTRACENTRÍFUGA (UC) - 1"
 }
 
 # —————— Subida de múltiples archivos ——————
