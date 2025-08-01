@@ -111,7 +111,7 @@ columnas_esperadas = {
     "NZ": "SEPARABILIDAD AGUA A 54 °C (AGUA) - 7",
     "OA": "SEPARABILIDAD AGUA A 54 °C (EMULSIÓN) - 8",
     "OB": "SEPARABILIDAD AGUA A 54 °C (TIEMPO) - 83",
-    "PD": "**ULTRACENTRÍFUGA (UC) - 1"
+    "PD": "**ULTRACENTRÍFUGA (UC) - 1",
 }
 
 # —————— Subida de múltiples archivos ——————
