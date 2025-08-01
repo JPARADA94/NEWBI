@@ -3,8 +3,8 @@ import pandas as pd
 from io import BytesIO
 
 # —————— Configuración general ——————
-st.set_page_config(page_title="Validación de Encabezados – Grupo Soporte Mobil", layout="wide")
-st.title("📊 Validación de Encabezados – Grupo de Ingenieros de Soporte en Campo (Mobil)")
+st.set_page_config(page_title="Validación de Encabezados – Grupo Soporte Mobil v2.1", layout="wide")
+st.title("📊 Validación de Encabezados – Grupo de Ingenieros de Soporte en Campo (Mobil) – v2.1")
 st.markdown("**Responsables:** Grupo de Soporte en Campo – Mobil")
 
 st.markdown("""
@@ -12,7 +12,9 @@ st.markdown("""
 1. Sube el archivo Excel (.xlsx) con los datos originales.
 2. El sistema validará que los encabezados no hayan sido modificados.
 3. Visualiza los encabezados correctos desde un desplegable.
-4. Descarga el nuevo archivo limpio y ordenado si todo es correcto.
+4. El sistema identificará columnas no utilizadas que contienen datos.
+5. Podrás elegir si deseas incluir alguna de esas columnas extra en el nuevo Excel.
+6. Descarga el nuevo archivo limpio y ordenado.
 """)
 
 # —————— Utilitarios ——————
@@ -65,6 +67,7 @@ if uploaded:
     nombres_validos = []
     resumen_validacion = []
 
+    # ——— Validación de columnas esperadas ———
     for letra, nombre_esperado in columnas_esperadas.items():
         idx = col_letter_to_index(letra)
         if idx < len(columnas_reales):
@@ -103,15 +106,49 @@ if uploaded:
         df_resultado = df_original.iloc[:, columnas_validas]
         df_resultado.columns = nombres_validos
 
-        st.subheader("📋 Vista previa – Archivo limpio y ordenado")
+        # —————— NUEVO: Detectar columnas no movidas con datos ——————
+        st.subheader("📌 Columnas NO movidas que contienen datos")
+        columnas_restantes = [i for i in range(len(columnas_reales)) if i not in columnas_validas]
+
+        reporte_columnas_extra = []
+        for idx in columnas_restantes:
+            if df_original.iloc[1:, idx].notna().sum() > 0:
+                reporte_columnas_extra.append({
+                    "Letra Excel": col_index_to_letter(idx),
+                    "Encabezado": columnas_reales[idx],
+                    "Ubicación Excel": f"Columna {col_index_to_letter(idx)}",
+                    "Index": idx  # Guardamos index para filtrar después
+                })
+
+        if reporte_columnas_extra:
+            df_reporte = pd.DataFrame(reporte_columnas_extra)
+            st.dataframe(df_reporte[["Letra Excel", "Encabezado", "Ubicación Excel"]])
+
+            # ——— Multiselección de columnas extra a incluir ———
+            opciones_extra = {f"{row['Letra Excel']} – {row['Encabezado']}": row['Index'] for _, row in df_reporte.iterrows()}
+            seleccionadas = st.multiselect(
+                "Selecciona las columnas extra que deseas incluir en el Excel final:",
+                options=list(opciones_extra.keys())
+            )
+
+            if seleccionadas:
+                idx_seleccionados = [opciones_extra[sel] for sel in seleccionadas]
+                # Añadimos al DataFrame final
+                df_resultado = pd.concat([df_resultado, df_original.iloc[:, idx_seleccionados]], axis=1)
+        else:
+            st.info("No hay columnas extra con datos.")
+
+        # —————— Vista previa y descarga del archivo limpio ——————
+        st.subheader("📋 Vista previa – Archivo final")
         st.dataframe(df_resultado.head(10))
 
         buffer = BytesIO()
         df_resultado.to_excel(buffer, index=False, engine='openpyxl')
         buffer.seek(0)
         st.download_button(
-            label="📥 Descargar archivo ordenado",
+            label="📥 Descargar archivo final",
             data=buffer,
-            file_name="archivo_ordenado.xlsx",
+            file_name="archivo_final.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
