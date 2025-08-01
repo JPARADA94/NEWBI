@@ -3,21 +3,22 @@ import pandas as pd
 from io import BytesIO
 
 # —————— Configuración general ——————
-st.set_page_config(page_title="Validación de Encabezados – Grupo Soporte Mobil v2.1", layout="wide")
-st.title("📊 Validación de Encabezados – Grupo de Ingenieros de Soporte en Campo (Mobil) – v2.1")
+st.set_page_config(page_title="Validación de Encabezados – Grupo Soporte Mobil v3.0", layout="wide")
+st.title("📊 Validación de Encabezados – Grupo de Ingenieros de Soporte en Campo (Mobil) – v3.0")
 st.markdown("**Responsables:** Grupo de Soporte en Campo – Mobil")
 
 st.markdown("""
 ### 🧾 Instrucciones de uso:
-1. Sube el archivo Excel (.xlsx) con los datos originales.
+1. Sube uno o varios archivos Excel (.xlsx) con los datos originales.
 2. El sistema validará que los encabezados no hayan sido modificados.
-3. Visualiza los encabezados correctos desde un desplegable.
-4. El sistema identificará columnas no utilizadas que contienen datos.
-5. Podrás elegir si deseas incluir alguna de esas columnas extra en el nuevo Excel.
-6. Descarga el nuevo archivo limpio y ordenado.
+3. Para cada archivo:
+   - Visualiza las columnas validadas.
+   - Detecta columnas extra con datos.
+   - Selecciona si deseas incluirlas en el Excel final.
+4. Descarga el nuevo archivo limpio y ordenado para cada archivo original.
 """)
 
-# —————— Utilitarios ——————
+# —————— Funciones utilitarias ——————
 def col_letter_to_index(letter: str) -> int:
     idx = 0
     for c in letter.upper():
@@ -55,100 +56,100 @@ columnas_esperadas = {
     "C": "N_MUESTRA"
 }
 
-# —————— Subida del archivo ——————
-uploaded = st.file_uploader("📤 Sube tu archivo Excel (.xlsx):", type="xlsx")
+# —————— Subida de múltiples archivos ——————
+uploaded_files = st.file_uploader("📤 Sube uno o varios archivos Excel (.xlsx):", type="xlsx", accept_multiple_files=True)
 
-if uploaded:
-    df_original = pd.read_excel(uploaded, header=0, dtype=str)
-    columnas_reales = df_original.columns.tolist()
+if uploaded_files:
+    for uploaded in uploaded_files:
+        st.markdown(f"---\n## 📂 Procesando archivo: **{uploaded.name}**")
+        df_original = pd.read_excel(uploaded, header=0, dtype=str)
+        columnas_reales = df_original.columns.tolist()
 
-    errores = []
-    columnas_validas = []
-    nombres_validos = []
-    resumen_validacion = []
+        errores = []
+        columnas_validas = []
+        nombres_validos = []
+        resumen_validacion = []
 
-    # ——— Validación de columnas esperadas ———
-    for letra, nombre_esperado in columnas_esperadas.items():
-        idx = col_letter_to_index(letra)
-        if idx < len(columnas_reales):
-            nombre_real = columnas_reales[idx].strip()
-            if nombre_real == nombre_esperado.strip():
-                columnas_validas.append(idx)
-                nombres_validos.append(nombre_real)
-                resumen_validacion.append(f"✅ Columna {letra} = \"{nombre_real}\"")
-            else:
-                if nombre_esperado in columnas_reales:
-                    nueva_pos = columnas_reales.index(nombre_esperado)
-                    nueva_letra = col_index_to_letter(nueva_pos)
-                    errores.append(
-                        f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero se encontró \"{nombre_real}\". "
-                        f"⚠️ Encontrado en columna {nueva_letra}."
-                    )
+        # ——— Validación de columnas esperadas ———
+        for letra, nombre_esperado in columnas_esperadas.items():
+            idx = col_letter_to_index(letra)
+            if idx < len(columnas_reales):
+                nombre_real = columnas_reales[idx].strip()
+                if nombre_real == nombre_esperado.strip():
+                    columnas_validas.append(idx)
+                    nombres_validos.append(nombre_real)
+                    resumen_validacion.append(f"✅ Columna {letra} = \"{nombre_real}\"")
                 else:
-                    errores.append(
-                        f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero se encontró \"{nombre_real}\". "
-                        f"⚠️ No se encontró en ninguna otra columna."
-                    )
+                    if nombre_esperado in columnas_reales:
+                        nueva_pos = columnas_reales.index(nombre_esperado)
+                        nueva_letra = col_index_to_letter(nueva_pos)
+                        errores.append(
+                            f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero se encontró \"{nombre_real}\". "
+                            f"⚠️ Encontrado en columna {nueva_letra}."
+                        )
+                    else:
+                        errores.append(
+                            f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero se encontró \"{nombre_real}\". "
+                            f"⚠️ No se encontró en ninguna otra columna."
+                        )
+            else:
+                errores.append(f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero no existe en el archivo.")
+
+        if errores:
+            st.error("❌ Las siguientes columnas tienen errores:")
+            st.markdown("\n".join(errores))
+            continue  # Pasamos al siguiente archivo
         else:
-            errores.append(f"- Columna {letra}: se esperaba \"{nombre_esperado}\" pero no existe en el archivo.")
+            st.success("✅ Todas las columnas han sido validadas correctamente.")
 
-    if errores:
-        st.error("❌ Las siguientes columnas tienen errores:")
-        st.markdown("\n".join(errores))
-        st.stop()
-    else:
-        st.success("✅ Todas las columnas han sido validadas correctamente.")
+            with st.expander("🔍 Ver columnas validadas"):
+                for linea in resumen_validacion:
+                    st.markdown(linea)
 
-        with st.expander("🔍 Ver columnas validadas"):
-            for linea in resumen_validacion:
-                st.markdown(linea)
+            df_resultado = df_original.iloc[:, columnas_validas]
+            df_resultado.columns = nombres_validos
 
-        df_resultado = df_original.iloc[:, columnas_validas]
-        df_resultado.columns = nombres_validos
+            # —————— Detectar columnas no movidas con datos ——————
+            st.subheader("📌 Columnas NO movidas que contienen datos")
+            columnas_restantes = [i for i in range(len(columnas_reales)) if i not in columnas_validas]
 
-        # —————— NUEVO: Detectar columnas no movidas con datos ——————
-        st.subheader("📌 Columnas NO movidas que contienen datos")
-        columnas_restantes = [i for i in range(len(columnas_reales)) if i not in columnas_validas]
+            reporte_columnas_extra = []
+            for idx in columnas_restantes:
+                if df_original.iloc[1:, idx].notna().sum() > 0:
+                    reporte_columnas_extra.append({
+                        "Letra Excel": col_index_to_letter(idx),
+                        "Encabezado": columnas_reales[idx],
+                        "Ubicación Excel": f"Columna {col_index_to_letter(idx)}",
+                        "Index": idx
+                    })
 
-        reporte_columnas_extra = []
-        for idx in columnas_restantes:
-            if df_original.iloc[1:, idx].notna().sum() > 0:
-                reporte_columnas_extra.append({
-                    "Letra Excel": col_index_to_letter(idx),
-                    "Encabezado": columnas_reales[idx],
-                    "Ubicación Excel": f"Columna {col_index_to_letter(idx)}",
-                    "Index": idx  # Guardamos index para filtrar después
-                })
+            if reporte_columnas_extra:
+                df_reporte = pd.DataFrame(reporte_columnas_extra)
+                st.dataframe(df_reporte[["Letra Excel", "Encabezado", "Ubicación Excel"]])
 
-        if reporte_columnas_extra:
-            df_reporte = pd.DataFrame(reporte_columnas_extra)
-            st.dataframe(df_reporte[["Letra Excel", "Encabezado", "Ubicación Excel"]])
+                # Multiselección de columnas extra a incluir
+                opciones_extra = {f"{row['Letra Excel']} – {row['Encabezado']}": row['Index'] for _, row in df_reporte.iterrows()}
+                seleccionadas = st.multiselect(
+                    f"Selecciona las columnas extra que deseas incluir en el Excel final para {uploaded.name}:",
+                    options=list(opciones_extra.keys())
+                )
 
-            # ——— Multiselección de columnas extra a incluir ———
-            opciones_extra = {f"{row['Letra Excel']} – {row['Encabezado']}": row['Index'] for _, row in df_reporte.iterrows()}
-            seleccionadas = st.multiselect(
-                "Selecciona las columnas extra que deseas incluir en el Excel final:",
-                options=list(opciones_extra.keys())
+                if seleccionadas:
+                    idx_seleccionados = [opciones_extra[sel] for sel in seleccionadas]
+                    df_resultado = pd.concat([df_resultado, df_original.iloc[:, idx_seleccionados]], axis=1)
+            else:
+                st.info("No hay columnas extra con datos.")
+
+            # —————— Vista previa y descarga del archivo limpio ——————
+            st.subheader(f"📋 Vista previa – Archivo final para {uploaded.name}")
+            st.dataframe(df_resultado.head(10))
+
+            buffer = BytesIO()
+            df_resultado.to_excel(buffer, index=False, engine='openpyxl')
+            buffer.seek(0)
+            st.download_button(
+                label=f"📥 Descargar archivo final ({uploaded.name})",
+                data=buffer,
+                file_name=f"archivo_final_{uploaded.name}",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-
-            if seleccionadas:
-                idx_seleccionados = [opciones_extra[sel] for sel in seleccionadas]
-                # Añadimos al DataFrame final
-                df_resultado = pd.concat([df_resultado, df_original.iloc[:, idx_seleccionados]], axis=1)
-        else:
-            st.info("No hay columnas extra con datos.")
-
-        # —————— Vista previa y descarga del archivo limpio ——————
-        st.subheader("📋 Vista previa – Archivo final")
-        st.dataframe(df_resultado.head(10))
-
-        buffer = BytesIO()
-        df_resultado.to_excel(buffer, index=False, engine='openpyxl')
-        buffer.seek(0)
-        st.download_button(
-            label="📥 Descargar archivo final",
-            data=buffer,
-            file_name="archivo_final.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
