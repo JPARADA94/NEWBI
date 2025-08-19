@@ -13,11 +13,12 @@ st.markdown(
 ### 🧾 Instrucciones de uso:
 1. Sube **uno o varios archivos Excel (.xlsx)**.
 2. El sistema unirá todos los archivos en un solo conjunto.
-3. Validará los encabezados sobre el conjunto completo.
-4. Generará dos reportes:
-   - **Tabla de desalineaciones**: posición esperada vs. posición encontrada o ausencia.
-   - **Tabla de columnas con datos no mapeadas** (se agregarán al final).
-5. Genera **un único archivo Excel consolidado** y los reportes descargables.
+3. Validará y **forzará** el orden de columnas solicitado.
+4. Mostrará **tablas de cambios** si detecta:
+   - Desalineaciones (posición esperada vs. encontrada / faltantes).
+   - Columnas con datos **no mapeadas** (se agregarán al final).
+   - Columnas **eliminadas explícitamente** (p. ej., `id_muestra`).
+5. Genera **un único archivo Excel consolidado** y reportes descargables.
 """
 )
 
@@ -91,44 +92,153 @@ expected_names = [
 ]
 
 # —————— Subida de múltiples archivos ——————
-uploaded_files = st.file_uploader("📤 Sube uno o varios archivos Excel (.xlsx):", type="xlsx", accept_multiple_files=True)
+uploaded_files = st.file_uploader(
+    "📤 Sube uno o varios archivos Excel (.xlsx):",
+    type="xlsx",
+    accept_multiple_files=True
+)
 
 if uploaded_files:
     dfs = []
+    cols_eliminadas_explicitamente = set()  # para reportar columnas removidas (p. ej., id_muestra)
+
     for uploaded in uploaded_files:
         df = pd.read_excel(uploaded, header=0, dtype=str, engine="openpyxl")
 
-        # 🔴 ELIMINAR "id_muestra" si viene en los archivos de origen
-        if "id_muestra" in df.columns:
-            df = df.drop(columns=["id_muestra"])
+        # 🔴 ELIMINAR "id_muestra" si viene en los archivos de origen (y registrar en reporte)
+        for col in list(df.columns):
+            if normalize_header(col) == "id_muestra":
+                cols_eliminadas_explicitamente.add(col)  # guardamos el nombre original visto
+                df = df.drop(columns=[col])
 
+        # Añadir columna de origen
         df["Archivo_Origen"] = uploaded.name
         dfs.append(df)
 
+    # Unir todo
     df_global = pd.concat(dfs, ignore_index=True)
 
-    # ——— Reconstrucción en ORDEN exacto + extras al final ———
+    # ——— Preparativos para validación ———
     columnas_reales = [c.strip() for c in df_global.columns.tolist()]
     mapa_nombre_a_indice = {col: i for i, col in enumerate(columnas_reales)}
+    mapa_norm_a_nombre = {normalize_header(col): col for col in columnas_reales}
     expected_set_norm = {normalize_header(v) for v in expected_names}
 
+    # —— Tabla de DESALINEACIONES (posición esperada vs. encontrada) ——
+    des_rows = []
+    for pos_esp, esperado in enumerate(expected_names):
+        letra_esp = col_index_to_letter(pos_esp)
+        if esperado in mapa_nombre_a_indice:
+            pos_real = mapa_nombre_a_indice[esperado]
+            if pos_real != pos_esp:
+                des_rows.append({
+                    "Posición esperada": f"{pos_esp+1} ({letra_esp})",
+                    "Encabezado esperado": esperado,
+                    "Posición encontrada": f"{pos_real+1} ({col_index_to_letter(pos_real)})",
+                })
+        else:
+            # Si no existe exactamente, intentamos detectar variante por normalización
+            norm = normalize_header(esperado)
+            if norm in mapa_norm_a_nombre:
+                casi = mapa_norm_a_nombre[norm]
+                pos_real = mapa_nombre_a_indice[casi]
+                des_rows.append({
+                    "Posición esperada": f"{pos_esp+1} ({letra_esp})",
+                    "Encabezado esperado": esperado,
+                    "Posición encontrada": f"{pos_real+1} ({col_index_to_letter(pos_real)}) – variante: '{casi}'",
+                })
+            else:
+                des_rows.append({
+                    "Posición esperada": f"{pos_esp+1} ({letra_esp})",
+                    "Encabezado esperado": esperado,
+                    "Posición encontrada": "(no existe)",
+                })
+
+    st.subheader("📋 Tabla de Desalineaciones (cambios detectados en las columnas)")
+    if des_rows:
+        df_des = pd.DataFrame(des_rows, columns=["Posición esperada","Encabezado esperado","Posición encontrada"])
+        st.dataframe(df_des, use_container_width=True)
+        make_downloads(df_des, "reporte_desalineaciones", sheet="Desalineaciones")
+    else:
+        st.success("✅ No se detectaron desalineaciones con respecto al orden esperado.")
+
+    st.divider()
+
+    # —— Columnas NO MAPEADAS con datos (se agregarán al final) ——
+    st.subheader("🟠 Columnas con datos NO mapeadas (se agregarán al final)")
+    extra_rows = []
+    extra_cols_ordered = []
+    for idx, nombre in enumerate(columnas_reales):
+        if normalize_header(nombre) not in expected_set_norm:
+            datos = df_global.iloc[:, idx].notna().sum()
+            # Las columnas no mapeadas con o sin datos: se reportan si tienen datos
+            if datos > 0:
+                extra_rows.append({
+                    "Letra actual": col_index_to_letter(idx),
+                    "Encabezado no considerado": nombre,
+                    "Registros con datos": int(datos),
+                })
+                extra_cols_ordered.append(nombre)
+
+    if extra_rows:
+        df_extra = pd.DataFrame(extra_rows, columns=["Letra actual","Encabezado no considerado","Registros con datos"])
+        st.dataframe(df_extra, use_container_width=True)
+        make_downloads(df_extra, "no_mapeadas_con_datos", sheet="No_mapeadas")
+    else:
+        st.info("No se encontraron columnas adicionales con datos fuera del mapa esperado.")
+
+    st.divider()
+
+    # —— Columnas eliminadas explícitamente (si existían) ——
+    st.subheader("🚫 Columnas eliminadas explícitamente")
+    if cols_eliminadas_explicitamente:
+        df_removed = pd.DataFrame(
+            [{"Columna eliminada": c} for c in sorted(cols_eliminadas_explicitamente)]
+        )
+        st.dataframe(df_removed, use_container_width=True)
+        make_downloads(df_removed, "columnas_eliminadas", sheet="Eliminadas")
+    else:
+        st.caption("No se eliminaron columnas explícitas.")
+
+    st.divider()
+
+    # —— Construcción del archivo final (orden fijo + extras al final) ——
+    st.subheader("🧩 Construcción del archivo final")
+
     columnas_finales = []
+    faltantes = []
+
+    # 1) Orden fijo exacto solicitado
     for esperado in expected_names:
         if esperado in mapa_nombre_a_indice:
             columnas_finales.append(df_global.iloc[:, mapa_nombre_a_indice[esperado]].rename(esperado))
         else:
+            faltantes.append(esperado)
             columnas_finales.append(pd.Series([None]*len(df_global), name=esperado))
 
-    # extras con datos → al final
-    for col in df_global.columns:
-        if normalize_header(col) not in expected_set_norm and col != "id_muestra":
-            columnas_finales.append(df_global[col])
+    # 2) Agregar al final las columnas extra con datos (en el orden detectado)
+    for nombre in extra_cols_ordered:
+        # Evitar duplicar Archivo_Origen o cualquier columna ya incluida
+        if nombre not in [s.name for s in columnas_finales]:
+            columnas_finales.append(df_global[nombre])
 
     df_resultado = pd.concat(columnas_finales, axis=1)
 
     st.subheader("📋 Vista previa – Archivo Final")
     st.dataframe(df_resultado.head(10), use_container_width=True)
     make_downloads(df_resultado, "archivo_consolidado", sheet="Consolidado")
+
+    # —— Resumen rápido de cambios ——
+    st.divider()
+    st.subheader("📌 Resumen")
+    st.write({
+        "Total columnas esperadas": len(expected_names),
+        "Desalineaciones detectadas": len(des_rows),
+        "No mapeadas con datos (agregadas al final)": len(extra_cols_ordered),
+        "Columnas eliminadas explícitamente": len(cols_eliminadas_explicitamente),
+        "Columnas esperadas faltantes (rellenadas vacías)": len(faltantes),
+    })
+
 
 
 
