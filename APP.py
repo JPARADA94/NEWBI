@@ -15,23 +15,15 @@ st.markdown(
 2. El sistema unirá todos los archivos en un solo conjunto.
 3. Validará los encabezados sobre el conjunto completo.
 4. Generará dos reportes:
-   - **Tabla de desalineaciones**: ubicación original, encabezado esperado, lo encontrado y nueva ubicación del esperado.
-   - **Tabla de columnas con datos no mapeadas**.
-5. Permite **incluir columnas extra con datos**.
-6. Genera **un único archivo Excel consolidado** y los reportes descargables.
+   - **Tabla de desalineaciones**: posición esperada vs. posición encontrada o ausencia.
+   - **Tabla de columnas con datos no mapeadas** (se agregarán al final).
+5. Genera **un único archivo Excel consolidado** y los reportes descargables.
 """
 )
 
 # —————— Utilitarios ——————
-def col_letter_to_index(letter: str) -> int:
-    """Convierte letra(s) de columna de Excel (A, Z, AA, AB...) a índice base 0."""
-    idx = 0
-    for c in letter.upper():
-        idx = idx * 26 + (ord(c) - ord("A") + 1)
-    return idx - 1
-
 def col_index_to_letter(idx: int) -> str:
-    """Convierte índice base 0 a letra(s) de columna de Excel."""
+    """Convierte índice base 0 a letra(s) de columna de Excel (A, Z, AA...)."""
     letter = ""
     while idx >= 0:
         letter = chr(idx % 26 + ord('A')) + letter
@@ -75,95 +67,91 @@ def make_downloads(df: pd.DataFrame, base_name: str, sheet: str):
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-# —————— Diccionario actualizado de columnas esperadas (con P, Q, R, S, AA) ——————
-columnas_esperadas = {
-    # Identificación / cabecera
-    "A":  "NOMBRE_CLIENTE",
-    "B":  "NOMBRE_OPERACION",
-    "C":  "N_MUESTRA",
-    "D":  "CORRELATIVO",
-    "E":  "FECHA_MUESTREO",
-    "F":  "FECHA_INGRESO",
-    "G":  "FECHA_RECEPCION",
-    "H":  "FECHA_INFORME",
-    "I":  "EDAD_COMPONENTE",
-    "J":  "UNIDAD_EDAD_COMPONENTE",
-    "K":  "EDAD_PRODUCTO",
-    "L":  "UNIDAD_EDAD_PRODUCTO",
-    "M":  "CANTIDAD_ADICIONADA",
-    "N":  "UNIDAD_CANTIDAD_ADICIONADA",
-    "O":  "PRODUCTO",
-    # NUEVAS del usuario (antes salían como no consideradas)
-    "P":  "TIPO_PRODUCTO",
-    "Q":  "EQUIPO",
-    "R":  "TIPO_EQUIPO",
-    "S":  "MARCA_EQUIPO",
-    "AA": "id_muestra",
-    # Componente
-    "U":  "COMPONENTE",
-    "V":  "MARCA_COMPONENTE",
-    "W":  "MODELO_COMPONENTE",
-    "X":  "DESCRIPTOR_COMPONENTE",
-    # Estado / servicio
-    "Y":  "ESTADO",
-    "Z":  "NIVEL_DE_SERVICIO",
-
-    # Ensayos y propiedades (mapa del usuario)
-    "IQ": "ÍNDICE PQ (PQI) - 3",
-    "MK": "PLATA (AG) - 19",
-    "AK": "ALUMINIO (AL) - 20",
-    "FM": "CROMO (CR) - 24",
-    "BX": "COBRE (CU) - 25",
-    "IF": "HIERRO (FE) - 26",
-    "PB": "TITANIO (TI) - 38",
-    "MN": "PLOMO (PB) - 35",
-    "JS": "NÍQUEL (NI) - 32",
-    "JM": "MOLIBDENO (MO) - 30",
-    "OE": "SILICIO (SI) - 36",
-    "OH": "SODIO (NA) - 31",
-    "MP": "POTASIO (K) - 27",
-    "PF": "VANADIO (V) - 39",
-    "BK": "BORO (B) - 18",
-    "BE": "BARIO (BA) - 21",
-    "BO": "CALCIO (CA) - 22",
-    "BM": "CADMIO (CD) - 23",
-    "JG": "MAGNESIO (MG) - 28",
-    "JH": "MANGANESO (MN) - 29",
-    "HR": "FÓSFORO (P) - 34",
-    "PQ": "ZINC (ZN) - 40",
-    "CA": "CÓDIGO ISO (4/6/14) - 47",
-    "FC": "CONTEO PARTÍCULAS >= 4 ΜM - 49",
-    "FD": "CONTEO PARTÍCULAS >= 6 ΜM - 50",
-    "FB": "CONTEO PARTÍCULAS >= 14 ΜM - 48",
-    "KD": "**OXIDACIÓN - 80",
-    "JT": "**NITRACIÓN - 82",
-    "JW": "NÚMERO ÁCIDO (AN) - 43",
-    "JY": "NÚMERO BÁSICO (BN) - 12",
-    "JX": "NÚMERO BÁSICO (BN) - 17",
-    "IH": "**HOLLÍN - 79",
-    "GP": "DILUCIÓN POR COMBUSTIBLE - 46",
-    "AF": "**AGUA (IR) - 81",
-    "CT": "CONTENIDO AGUA (KARL FISCHER) - 41",
-    "ES": "CONTENIDO GLICOL  - 105",
-    "PI": "VISCOSIDAD A 100 °C - 13",
-    "PJ": "VISCOSIDAD A 40 °C - 14",
-    "CF": "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51",
-    "AE": "AGUA CUALITATIVA (PLANCHA) - 360",
-    "AH": "AGUA LIBRE - 416",
-    "AL": "ANÁLISIS ANTIOXIDANTES (AMINA) - 44",
-    "AM": "ANÁLISIS ANTIOXIDANTES (FENOL) - 45",
-    "BW": "COBRE (CU) - 119",
-    "GU": "ESPUMA SEC 1 - ESTABILIDAD - 60",
-    "GV": "ESPUMA SEC 1 - TENDENCIA - 59",
-    "HL": "ESTAÑO (SN) - 37",
-    "IT": "**ÍNDICE VISCOSIDAD - 359",
-    "NX": "RPVOT - 10",
-    "NZ": "SEPARABILIDAD AGUA A 54 °C (ACEITE) - 6",
-    "OA": "SEPARABILIDAD AGUA A 54 °C (AGUA) - 7",
-    "OB": "SEPARABILIDAD AGUA A 54 °C (EMULSIÓN) - 8",
-    "OC": "SEPARABILIDAD AGUA A 54 °C (TIEMPO) - 83",
-    "PE": "**ULTRACENTRÍFUGA (UC) - 1",
-}
+# ——— Orden base EXACTO solicitado (MODELO_EQUIPO en posición 19; id_muestra al final) ———
+expected_names = [
+    "NOMBRE_CLIENTE",
+    "NOMBRE_OPERACION",
+    "N_MUESTRA",
+    "CORRELATIVO",
+    "FECHA_MUESTREO",
+    "FECHA_INGRESO",
+    "FECHA_RECEPCION",
+    "FECHA_INFORME",
+    "EDAD_COMPONENTE",
+    "UNIDAD_EDAD_COMPONENTE",
+    "EDAD_PRODUCTO",
+    "UNIDAD_EDAD_PRODUCTO",
+    "CANTIDAD_ADICIONADA",
+    "UNIDAD_CANTIDAD_ADICIONADA",
+    "PRODUCTO",
+    "TIPO_PRODUCTO",
+    "EQUIPO",
+    "TIPO_EQUIPO",
+    "MARCA_EQUIPO",
+    "MODELO_EQUIPO",          # ← posición 19
+    "COMPONENTE",
+    "MARCA_COMPONENTE",
+    "MODELO_COMPONENTE",
+    "DESCRIPTOR_COMPONENTE",
+    "ESTADO",
+    "NIVEL_DE_SERVICIO",
+    "ÍNDICE PQ (PQI) - 3",
+    "PLATA (AG) - 19",
+    "ALUMINIO (AL) - 20",
+    "CROMO (CR) - 24",
+    "COBRE (CU) - 25",
+    "HIERRO (FE) - 26",
+    "TITANIO (TI) - 38",
+    "PLOMO (PB) - 35",
+    "NÍQUEL (NI) - 32",
+    "MOLIBDENO (MO) - 30",
+    "SILICIO (SI) - 36",
+    "SODIO (NA) - 31",
+    "POTASIO (K) - 27",
+    "VANADIO (V) - 39",
+    "BORO (B) - 18",
+    "BARIO (BA) - 21",
+    "CALCIO (CA) - 22",
+    "CADMIO (CD) - 23",
+    "MAGNESIO (MG) - 28",
+    "MANGANESO (MN) - 29",
+    "FÓSFORO (P) - 34",
+    "ZINC (ZN) - 40",
+    "CÓDIGO ISO (4/6/14) - 47",
+    "CONTEO PARTÍCULAS >= 4 ΜM - 49",
+    "CONTEO PARTÍCULAS >= 6 ΜM - 50",
+    "CONTEO PARTÍCULAS >= 14 ΜM - 48",
+    "**OXIDACIÓN - 80",
+    "**NITRACIÓN - 82",
+    "NÚMERO ÁCIDO (AN) - 43",
+    "NÚMERO BÁSICO (BN) - 12",
+    "NÚMERO BÁSICO (BN) - 17",
+    "**HOLLÍN - 79",
+    "DILUCIÓN POR COMBUSTIBLE - 46",
+    "**AGUA (IR) - 81",
+    "CONTENIDO AGUA (KARL FISCHER) - 41",
+    "CONTENIDO GLICOL  - 105",
+    "VISCOSIDAD A 100 °C - 13",
+    "VISCOSIDAD A 40 °C - 14",
+    "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51",
+    "AGUA CUALITATIVA (PLANCHA) - 360",
+    "AGUA LIBRE - 416",
+    "ANÁLISIS ANTIOXIDANTES (AMINA) - 44",
+    "ANÁLISIS ANTIOXIDANTES (FENOL) - 45",
+    "COBRE (CU) - 119",
+    "ESPUMA SEC 1 - ESTABILIDAD - 60",
+    "ESPUMA SEC 1 - TENDENCIA - 59",
+    "ESTAÑO (SN) - 37",
+    "**ÍNDICE VISCOSIDAD - 359",
+    "RPVOT - 10",
+    "SEPARABILIDAD AGUA A 54 °C (ACEITE) - 6",
+    "SEPARABILIDAD AGUA A 54 °C (AGUA) - 7",
+    "SEPARABILIDAD AGUA A 54 °C (EMULSIÓN) - 8",
+    "SEPARABILIDAD AGUA A 54 °C (TIEMPO) - 83",
+    "**ULTRACENTRÍFUGA (UC) - 1",
+    "Archivo_Origen",         # se mantiene antes del último campo
+    "id_muestra"              # ← SIEMPRE al final
+]
 
 # —————— Subida de múltiples archivos ——————
 uploaded_files = st.file_uploader(
@@ -181,64 +169,77 @@ if uploaded_files:
         dfs.append(df)
     df_global = pd.concat(dfs, ignore_index=True)
 
+    # Columnas reales y mapas auxiliares
     columnas_reales = [c.strip() for c in df_global.columns.tolist()]
-    expected_names = list(columnas_esperadas.values())
+    mapa_nombre_a_indice = {col: i for i, col in enumerate(columnas_reales)}
+    mapa_norm_a_nombre = {normalize_header(col): col for col in columnas_reales}
+    expected_set_norm = {normalize_header(v) for v in expected_names}
 
-    # —— Reporte de desalineaciones ——
+    # —— Reporte de desalineaciones (por POSICIÓN esperada) ——
     des_rows = []
-    for letra, esperado in columnas_esperadas.items():
-        idx = col_letter_to_index(letra)
-        if idx < len(columnas_reales):
-            encontrado = columnas_reales[idx]
-            if encontrado != esperado:
-                nueva_letra = col_index_to_letter(columnas_reales.index(esperado)) if esperado in columnas_reales else "—"
+    for pos_esp, esperado in enumerate(expected_names):
+        letra_esp = col_index_to_letter(pos_esp)
+        # ¿Existe?
+        if esperado in mapa_nombre_a_indice:
+            pos_real = mapa_nombre_a_indice[esperado]
+            if pos_real != pos_esp:
                 des_rows.append({
-                    "Ubicación original": letra,
+                    "Posición esperada": f"{pos_esp+1} ({letra_esp})",
                     "Encabezado esperado": esperado,
-                    "Encontrado en origen": encontrado,
-                    "Nueva ubicación del esperado": nueva_letra,
+                    "Posición encontrada": f"{pos_real+1} ({col_index_to_letter(pos_real)})",
                 })
         else:
-            des_rows.append({
-                "Ubicación original": letra,
-                "Encabezado esperado": esperado,
-                "Encontrado en origen": "(no existe)",
-                "Nueva ubicación del esperado": "—",
-            })
+            # Intento por normalización (para informar ubicación si hay “casi” igual)
+            norm = normalize_header(esperado)
+            if norm in mapa_norm_a_nombre:
+                casi = mapa_norm_a_nombre[norm]
+                pos_real = mapa_nombre_a_indice[casi]
+                des_rows.append({
+                    "Posición esperada": f"{pos_esp+1} ({letra_esp})",
+                    "Encabezado esperado": esperado,
+                    "Posición encontrada": f"{pos_real+1} ({col_index_to_letter(pos_real)}) – (variante de nombre: '{casi}')",
+                })
+            else:
+                des_rows.append({
+                    "Posición esperada": f"{pos_esp+1} ({letra_esp})",
+                    "Encabezado esperado": esperado,
+                    "Posición encontrada": "(no existe)",
+                })
 
-    st.subheader("📋 Tabla de Desalineaciones")
+    st.subheader("📋 Tabla de Desalineaciones (posición esperada vs. encontrada)")
     if des_rows:
         df_des = pd.DataFrame(
             des_rows,
             columns=[
-                "Ubicación original",
+                "Posición esperada",
                 "Encabezado esperado",
-                "Encontrado en origen",
-                "Nueva ubicación del esperado",
+                "Posición encontrada",
             ],
         )
         st.dataframe(df_des, use_container_width=True)
         make_downloads(df_des, "reporte_desalineaciones", sheet="Desalineaciones")
     else:
-        st.success("✅ Todas las columnas coinciden con lo esperado.")
+        st.success("✅ Todas las columnas están en la posición esperada.")
 
     st.divider()
 
     # —— Columnas no mapeadas con datos ——
-    st.subheader("🟠 Columnas con datos que no estaban en el mapa")
-    expected_set_norm = {normalize_header(v) for v in columnas_esperadas.values()}
+    st.subheader("🟠 Columnas con datos no mapeadas (se agregarán al final)")
     extra_rows = []
+    extra_cols_ordered = []
     for idx, nombre in enumerate(columnas_reales):
         if normalize_header(nombre) not in expected_set_norm:
             datos = df_global.iloc[:, idx].notna().sum()
             if datos > 0:
                 extra_rows.append({
-                    "Letra": col_index_to_letter(idx),
+                    "Letra actual": col_index_to_letter(idx),
                     "Encabezado no considerado": nombre,
                     "Registros con datos": int(datos),
                 })
+                extra_cols_ordered.append(nombre)
+
     if extra_rows:
-        df_extra = pd.DataFrame(extra_rows, columns=["Letra", "Encabezado no considerado", "Registros con datos"])
+        df_extra = pd.DataFrame(extra_rows, columns=["Letra actual", "Encabezado no considerado", "Registros con datos"])
         st.dataframe(df_extra, use_container_width=True)
         make_downloads(df_extra, "no_mapeadas_con_datos", sheet="No_mapeadas")
     else:
@@ -246,60 +247,42 @@ if uploaded_files:
 
     st.divider()
 
-    # —— Construcción del archivo final por NOMBRE ——
-    st.subheader("🧩 Construcción del archivo final")
-    usar_normalizado = st.checkbox("Sugerir coincidencias usando comparación normalizada (aproximada)", value=False)
-
-    mapa_nombre_a_indice = {col: i for i, col in enumerate(columnas_reales)}
-    mapa_norm_a_nombre = {normalize_header(col): col for col in columnas_reales}
+    # —— Construcción del archivo final (forzando ORDEN exacto) ——
+    st.subheader("🧩 Construcción del archivo final (orden fijo + extras al final)")
 
     columnas_finales = []
     faltantes = []
-    sugerencias = []
+
+    # 1) Añadir en el ORDEN exacto solicitado
     for esperado in expected_names:
         if esperado in mapa_nombre_a_indice:
             columnas_finales.append(df_global.iloc[:, mapa_nombre_a_indice[esperado]].rename(esperado))
         else:
-            if usar_normalizado:
-                norm = normalize_header(esperado)
-                if norm in mapa_norm_a_nombre:
-                    casi = mapa_norm_a_nombre[norm]
-                    sugerencias.append({"Esperado": esperado, "Coincidencia aproximada": casi})
-                    columnas_finales.append(df_global.iloc[:, mapa_nombre_a_indice[casi]].rename(esperado))
-                else:
-                    faltantes.append(esperado)
-                    columnas_finales.append(pd.Series([None]*len(df_global), name=esperado))
-            else:
-                faltantes.append(esperado)
-                columnas_finales.append(pd.Series([None]*len(df_global), name=esperado))
+            # Si no existe, columna vacía
+            faltantes.append(esperado)
+            columnas_finales.append(pd.Series([None]*len(df_global), name=esperado))
+
+    # 2) Agregar automáticamente TODAS las columnas extra con datos al final (en el orden en que aparecieron)
+    for nombre in extra_cols_ordered:
+        if nombre not in [s.name for s in columnas_finales]:
+            columnas_finales.append(df_global[nombre])
 
     df_resultado = pd.concat(columnas_finales, axis=1)
 
-    # Incluir columnas extra seleccionadas
-    st.subheader("📌 Columnas extra con datos para incluir en el final (opcional)")
-    if extra_rows:
-        opciones_extra = {f"{r['Letra']} – {r['Encabezado no considerado']}": r['Letra'] for r in extra_rows}
-        seleccionadas = st.multiselect("Selecciona las columnas extra a incluir:", options=list(opciones_extra.keys()))
-        if seleccionadas:
-            letras_sel = [opciones_extra[s] for s in seleccionadas]
-            idx_sel = [col_letter_to_index(L) for L in letras_sel]
-            df_resultado = pd.concat([df_resultado, df_global.iloc[:, idx_sel]], axis=1)
+    # 3) Garantizar que 'id_muestra' quede al FINAL (aunque viniera en otro lugar)
+    if "id_muestra" in df_resultado.columns:
+        col_id = df_resultado.pop("id_muestra")
     else:
-        st.caption("No hay columnas extra con datos disponibles para añadir.")
-
-    # Añadir origen
-    if "Archivo_Origen" in df_global.columns:
-        df_resultado["Archivo_Origen"] = df_global["Archivo_Origen"]
+        col_id = pd.Series([None]*len(df_resultado), name="id_muestra")
+    df_resultado["id_muestra"] = col_id  # asegura última posición
 
     st.subheader("📋 Vista previa – Archivo Final")
     st.dataframe(df_resultado.head(10), use_container_width=True)
     make_downloads(df_resultado, "archivo_consolidado", sheet="Consolidado")
 
-    # Mostrar sugerencias/faltantes si aplica
-    if sugerencias:
-        with st.expander("Coincidencias aproximadas aplicadas"):
-            st.write(pd.DataFrame(sugerencias))
+    # Mostrar faltantes si aplica
     if faltantes:
         with st.expander("Encabezados faltantes en los archivos cargados"):
-            st.write(pd.DataFrame({"Esperado": faltantes}))
+            st.write(pd.DataFrame({"Esperado (no encontrado)": faltantes}))
+
 
