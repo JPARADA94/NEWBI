@@ -4,11 +4,10 @@ from io import BytesIO
 
 # ===================== Configuración =====================
 st.set_page_config(page_title="Filtrar por Encabezados EXACTOS", layout="wide")
-st.title("📄 Construir Excel solo con encabezados requeridos (coincidencia EXACTA)")
+st.title("📄 Construir Excel solo con encabezados requeridos (EXACTOS) + Archivo_Origen")
 st.caption(
-    "Si falta AL MENOS una columna requerida en cualquier archivo, se mostrará un aviso y se detendrá el proceso. "
-    "Si todas existen, se genera el archivo final con 'Archivo_Origen' como última columna (CC) y se reportan columnas "
-    "NO requeridas con >1 dato (ignorando celdas iguales al nombre del encabezado)."
+    "Se detiene si falta alguna columna requerida. Si todo está OK, se genera el archivo final en la hoja 'Sheet1' "
+    "sin tablas de Excel, con 'Archivo_Origen' como última columna. También se listan columnas NO requeridas con >1 dato."
 )
 
 # ===================== Utilitarios =====================
@@ -21,7 +20,8 @@ def col_index_to_letter(idx: int) -> str:
         i = i // 26 - 1
     return s
 
-def df_to_xlsx_bytes(df: pd.DataFrame, sheet: str = "Consolidado") -> BytesIO:
+def df_to_xlsx_bytes(df: pd.DataFrame, sheet: str = "Sheet1") -> BytesIO:
+    """Escribe el DataFrame a XLSX en la hoja `sheet`, SIN crear Tabla de Excel."""
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as w:
         df.to_excel(w, index=False, sheet_name=sheet)
@@ -49,15 +49,15 @@ REQUERIDOS = [
     "SEPARABILIDAD AGUA A 54 °C (ACEITE) - 6","SEPARABILIDAD AGUA A 54 °C (AGUA) - 7",
     "SEPARABILIDAD AGUA A 54 °C (EMULSIÓN) - 8","SEPARABILIDAD AGUA A 54 °C (TIEMPO) - 83","**ULTRACENTRÍFUGA (UC) - 1"
 ]
-# Nota: 'Archivo_Origen' NO es requerido; se agrega siempre al final.
+# Nota: 'Archivo_Origen' se agrega SIEMPRE al final.
 
 # ===================== Carga de archivos =====================
 files = st.file_uploader("📤 Sube uno o varios Excel (.xlsx)", type="xlsx", accept_multiple_files=True)
 
 if files:
     faltantes_global = []     # faltantes en cualquier archivo (para detener)
-    extras_tabla = []         # columnas no requeridas con >1 dato
-    dfs_filtrados = []        # salida por archivo (con Archivo_Origen al final)
+    extras_tabla = []         # columnas no requeridas con >1 dato (ignorando celda = encabezado)
+    dfs_filtrados = []        # salida por archivo con Archivo_Origen
 
     for f in files:
         df = pd.read_excel(f, dtype=str, engine="openpyxl")
@@ -71,25 +71,20 @@ if files:
         else:
             # 2) Armar salida SOLO con requeridos (en orden) + Archivo_Origen al final
             df_out = df[REQUERIDOS].copy()
-            df_out["Archivo_Origen"] = f.name  # SIEMPRE última columna
+            df_out["Archivo_Origen"] = f.name
             dfs_filtrados.append(df_out)
 
             # 3) Analizar columnas NO requeridas -> contar SOLO valores >1 que:
             #    - no sean vacíos/espacios/nulos
-            #    - sean diferentes (case-insensitive) al nombre del encabezado
+            #    - sean distintos (case-insensitive) al nombre del encabezado
             requeridos_set = set(REQUERIDOS)
             for idx, col in enumerate(cols):
                 if col in requeridos_set:
                     continue
                 serie = df[col].astype(str).str.strip()
-
-                # quitar vacíos y "nan" literales
                 serie = serie.replace({"": pd.NA, "nan": pd.NA, "NaN": pd.NA})
-                # ignorar filas cuyo valor sea el mismo que el encabezado (sin importar mayúsculas)
                 mask_valido = serie.notna() & (serie.str.casefold() != str(col).strip().casefold())
                 datos_validos = int(mask_valido.sum())
-
-                # incluir SOLO si hay MÁS DE 1 dato válido
                 if datos_validos > 1:
                     extras_tabla.append({
                         "Archivo": f.name,
@@ -106,8 +101,9 @@ if files:
         st.dataframe(df_falt, use_container_width=True)
         st.stop()
 
-    # 5) Si todo OK -> mostrar tabla de extras y permitir descarga
+    # 5) Todo OK -> tabla de extras y descarga
     st.success("✅ Todos los archivos contienen TODAS las columnas requeridas con nombre EXACTO.")
+
     st.subheader("🟠 Columnas NO requeridas con >1 dato (ignorando celdas iguales al encabezado)")
     if extras_tabla:
         df_extras = pd.DataFrame(extras_tabla, columns=[
@@ -122,19 +118,18 @@ if files:
     else:
         st.info("No se encontraron columnas NO requeridas con más de 1 dato.")
 
-    # 6) Descargar consolidado final
+    # 6) Descargar consolidado final (Hoja = 'Sheet1', sin Tabla)
     df_final = pd.concat(dfs_filtrados, ignore_index=True)
-    st.subheader("📋 Vista previa del archivo final (solo columnas requeridas y en orden + Archivo_Origen)")
+    st.subheader("📋 Vista previa del archivo final (solo columnas requeridas + Archivo_Origen)")
     st.dataframe(df_final.head(15), use_container_width=True)
 
-    # Comprobar letra de 'Archivo_Origen' (debería ser la última)
+    xlsx_bytes = df_to_xlsx_bytes(df_final, sheet="Sheet1")
+    # Mostrar letra de la última columna
     ultima_letra = col_index_to_letter(len(df_final.columns) - 1)
-    st.caption(f"ℹ️ 'Archivo_Origen' se ubicó en la última columna: **{ultima_letra}** (debería ser CC).")
+    st.caption(f"ℹ️ 'Archivo_Origen' quedó como última columna: **{ultima_letra}** (archivo sin tabla, hoja 'Sheet1').")
 
-    xlsx_bytes = df_to_xlsx_bytes(df_final, sheet="Consolidado")
     st.download_button("📥 Descargar archivo final (XLSX)", xlsx_bytes,
                        file_name="consolidado_requeridos.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
 
 
