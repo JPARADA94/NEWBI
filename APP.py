@@ -5,7 +5,7 @@ from io import BytesIO
 # ===================== Configuración =====================
 st.set_page_config(page_title="Filtrar por Encabezados EXACTOS", layout="wide")
 st.title("📄 Construir Excel solo con encabezados requeridos (coincidencia EXACTA)")
-st.caption("Si falta AL MENOS una columna requerida en cualquier archivo, se mostrará un aviso y se detendrá el proceso.")
+st.caption("Si falta AL MENOS una columna requerida en cualquier archivo, se muestra un aviso y se detiene el proceso. Si todas existen, se genera el archivo final y se reportan columnas NO requeridas con >1 dato (ignorando celdas iguales al nombre del encabezado).")
 
 # ===================== Utilitarios =====================
 def col_index_to_letter(idx: int) -> str:
@@ -50,62 +50,63 @@ REQUERIDOS = [
 files = st.file_uploader("📤 Sube uno o varios Excel (.xlsx)", type="xlsx", accept_multiple_files=True)
 
 if files:
-    # 1) Validación de encabezados por archivo (EXACTOS). Si falta alguno: avisar y detener.
-    faltantes_reg = []      # lista de dicts con faltantes por archivo
-    extras_tabla = []       # para tabla de extras (solo si todo OK)
-    dfs_filtrados = []      # para concatenar si todo OK
+    faltantes_global = []     # faltantes en cualquier archivo (para detener)
+    extras_tabla = []         # columnas no requeridas con >1 dato (ignorando igual al encabezado)
+    dfs_filtrados = []        # salida por archivo
 
     for f in files:
         df = pd.read_excel(f, dtype=str, engine="openpyxl")
         cols = df.columns.tolist()
 
-        # --- Validación exacta ---
+        # 1) Validación exacta: reunir faltantes (si hay, se detiene al final)
         faltantes = [c for c in REQUERIDOS if c not in cols]
         if faltantes:
             for col in faltantes:
-                faltantes_reg.append({"Archivo": f.name, "Columna requerida NO encontrada": col})
-            # seguimos revisando los demás archivos para mostrar todos los errores,
-            # pero NO generaremos salida si hay al menos un faltante.
-
-        # Si no hay faltantes en este archivo, preparamos su versión filtrada y
-        # recolectamos info de extras (no requeridas) con datos.
-        if not faltantes:
-            # Filtrar y ordenar exactamente como REQUERIDOS
+                faltantes_global.append({"Archivo": f.name, "Columna requerida NO encontrada": col})
+        else:
+            # 2) Armar salida SOLO con requeridos (en orden) + columna de origen (opcional)
             df_out = df[REQUERIDOS].copy()
-            df_out["Archivo_Origen"] = f.name  # trazabilidad (no está en REQUERIDOS; puedes quitarlo si no lo quieres)
             dfs_filtrados.append(df_out)
 
-            # Evaluar otras columnas no relacionadas con datos (tabla extra)
+            # 3) Analizar columnas NO requeridas -> contar SOLO valores >1 que:
+            #    - no sean vacíos/espacios/nulos
+            #    - sean diferentes (case-insensitive) al nombre del encabezado
             requeridos_set = set(REQUERIDOS)
             for idx, col in enumerate(cols):
-                if col not in requeridos_set:
-                    serie = df[col]
-                    # contar datos no vacíos/ni NaN (considera strings vacíos como vacíos)
-                    datos = serie.astype(str).str.strip().replace({"": pd.NA}).notna().sum()
-                    if datos > 0:
-                        extras_tabla.append({
-                            "Archivo": f.name,
-                            "Encabezado (no requerido)": col,
-                            "Registros con datos": int(datos),
-                            "Posición original (n)": idx + 1,
-                            "Posición original (Excel)": col_index_to_letter(idx)
-                        })
+                if col in requeridos_set:
+                    continue
+                serie = df[col].astype(str).str.strip()
 
-    # Si hubo faltantes en CUALQUIER archivo → avisar y detener.
-    if faltantes_reg:
-        st.error("❌ Se detectaron columnas REQUERIDAS que NO aparecen con nombre EXACTO.")
-        df_falt = pd.DataFrame(faltantes_reg, columns=["Archivo","Columna requerida NO encontrada"])
+                # quitar vacíos y "nan" literales
+                serie = serie.replace({"": pd.NA, "nan": pd.NA, "NaN": pd.NA})
+                # ignorar filas cuyo valor sea el mismo que el encabezado (sin importar mayúsculas)
+                mask_valido = serie.notna() & (serie.str.casefold() != str(col).strip().casefold())
+                datos_validos = int(mask_valido.sum())
+
+                # incluir SOLO si hay MÁS DE 1 dato válido
+                if datos_validos > 1:
+                    extras_tabla.append({
+                        "Archivo": f.name,
+                        "Encabezado (no requerido)": col,
+                        "Registros con datos (>1, sin repetir encabezado)": datos_validos,
+                        "Posición original (n)": idx + 1,
+                        "Posición original (Excel)": col_index_to_letter(idx)
+                    })
+
+    # 4) Si hay faltantes en CUALQUIER archivo -> avisar y detener.
+    if faltantes_global:
+        st.error("❌ Faltan columnas REQUERIDAS (coincidencia EXACTA). Proceso detenido.")
+        df_falt = pd.DataFrame(faltantes_global, columns=["Archivo","Columna requerida NO encontrada"])
         st.dataframe(df_falt, use_container_width=True)
         st.stop()
 
-    # 2) Si TODO está OK → unimos, mostramos tabla de extras y generamos archivo
+    # 5) Si todo OK -> mostrar tabla de extras y permitir descarga
     st.success("✅ Todos los archivos contienen TODAS las columnas requeridas con nombre EXACTO.")
 
-    # Tabla de extras (si hubo)
-    st.subheader("🟠 Columnas NO requeridas con datos (por archivo)")
+    st.subheader("🟠 Columnas NO requeridas con >1 dato (ignorando celdas iguales al encabezado)")
     if extras_tabla:
         df_extras = pd.DataFrame(extras_tabla, columns=[
-            "Archivo","Encabezado (no requerido)","Registros con datos",
+            "Archivo","Encabezado (no requerido)","Registros con datos (>1, sin repetir encabezado)",
             "Posición original (n)","Posición original (Excel)"
         ])
         st.dataframe(df_extras, use_container_width=True)
@@ -114,15 +115,16 @@ if files:
                            file_name="extras_con_datos.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     else:
-        st.info("No se encontraron columnas adicionales con datos.")
+        st.info("No se encontraron columnas NO requeridas con más de 1 dato.")
 
-    # Unir y descargar resultado final
+    # 6) Descargar consolidado final
     df_final = pd.concat(dfs_filtrados, ignore_index=True)
-    st.subheader("📋 Vista previa del archivo final")
+    st.subheader("📋 Vista previa del archivo final (solo columnas requeridas y en orden)")
     st.dataframe(df_final.head(15), use_container_width=True)
 
     xlsx_bytes = df_to_xlsx_bytes(df_final, sheet="Consolidado")
     st.download_button("📥 Descargar archivo final (XLSX)", xlsx_bytes,
                        file_name="consolidado_requeridos.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 
