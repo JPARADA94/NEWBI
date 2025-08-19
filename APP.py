@@ -5,7 +5,11 @@ from io import BytesIO
 # ===================== Configuración =====================
 st.set_page_config(page_title="Filtrar por Encabezados EXACTOS", layout="wide")
 st.title("📄 Construir Excel solo con encabezados requeridos (coincidencia EXACTA)")
-st.caption("Si falta AL MENOS una columna requerida en cualquier archivo, se muestra un aviso y se detiene el proceso. Si todas existen, se genera el archivo final y se reportan columnas NO requeridas con >1 dato (ignorando celdas iguales al nombre del encabezado).")
+st.caption(
+    "Si falta AL MENOS una columna requerida en cualquier archivo, se mostrará un aviso y se detendrá el proceso. "
+    "Si todas existen, se genera el archivo final y se reportan columnas NO requeridas con >1 dato "
+    "(ignorando celdas iguales al nombre del encabezado)."
+)
 
 # ===================== Utilitarios =====================
 def col_index_to_letter(idx: int) -> str:
@@ -52,7 +56,7 @@ files = st.file_uploader("📤 Sube uno o varios Excel (.xlsx)", type="xlsx", ac
 if files:
     faltantes_global = []     # faltantes en cualquier archivo (para detener)
     extras_tabla = []         # columnas no requeridas con >1 dato (ignorando igual al encabezado)
-    dfs_filtrados = []        # salida por archivo
+    dfs_filtrados = []        # salida por archivo (con Archivo_Origen)
 
     for f in files:
         df = pd.read_excel(f, dtype=str, engine="openpyxl")
@@ -64,8 +68,9 @@ if files:
             for col in faltantes:
                 faltantes_global.append({"Archivo": f.name, "Columna requerida NO encontrada": col})
         else:
-            # 2) Armar salida SOLO con requeridos (en orden) + columna de origen (opcional)
+            # 2) Armar salida SOLO con requeridos (en orden) + Archivo_Origen al final
             df_out = df[REQUERIDOS].copy()
+            df_out["Archivo_Origen"] = f.name
             dfs_filtrados.append(df_out)
 
             # 3) Analizar columnas NO requeridas -> contar SOLO valores >1 que:
@@ -102,7 +107,6 @@ if files:
 
     # 5) Si todo OK -> mostrar tabla de extras y permitir descarga
     st.success("✅ Todos los archivos contienen TODAS las columnas requeridas con nombre EXACTO.")
-
     st.subheader("🟠 Columnas NO requeridas con >1 dato (ignorando celdas iguales al encabezado)")
     if extras_tabla:
         df_extras = pd.DataFrame(extras_tabla, columns=[
@@ -119,12 +123,11 @@ if files:
 
     # 6) Descargar consolidado final
     df_final = pd.concat(dfs_filtrados, ignore_index=True)
-    st.subheader("📋 Vista previa del archivo final (solo columnas requeridas y en orden)")
+    st.subheader("📋 Vista previa del archivo final (solo columnas requeridas y en orden + Archivo_Origen)")
     st.dataframe(df_final.head(15), use_container_width=True)
 
     xlsx_bytes = df_to_xlsx_bytes(df_final, sheet="Consolidado")
     st.download_button("📥 Descargar archivo final (XLSX)", xlsx_bytes,
                        file_name="consolidado_requeridos.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
 
