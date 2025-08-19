@@ -67,7 +67,7 @@ def make_downloads(df: pd.DataFrame, base_name: str, sheet: str):
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-# ——— Orden base EXACTO solicitado (MODELO_EQUIPO en posición 19; id_muestra al final) ———
+# ——— Orden base EXACTO solicitado (sin id_muestra) ———
 expected_names = [
     "NOMBRE_CLIENTE",
     "NOMBRE_OPERACION",
@@ -149,8 +149,7 @@ expected_names = [
     "SEPARABILIDAD AGUA A 54 °C (EMULSIÓN) - 8",
     "SEPARABILIDAD AGUA A 54 °C (TIEMPO) - 83",
     "**ULTRACENTRÍFUGA (UC) - 1",
-    "Archivo_Origen",         # se mantiene antes del último campo
-    "id_muestra"              # ← SIEMPRE al final
+    "Archivo_Origen"          # última fija
 ]
 
 # —————— Subida de múltiples archivos ——————
@@ -175,11 +174,10 @@ if uploaded_files:
     mapa_norm_a_nombre = {normalize_header(col): col for col in columnas_reales}
     expected_set_norm = {normalize_header(v) for v in expected_names}
 
-    # —— Reporte de desalineaciones (por POSICIÓN esperada) ——
+    # —— Reporte de desalineaciones ——
     des_rows = []
     for pos_esp, esperado in enumerate(expected_names):
         letra_esp = col_index_to_letter(pos_esp)
-        # ¿Existe?
         if esperado in mapa_nombre_a_indice:
             pos_real = mapa_nombre_a_indice[esperado]
             if pos_real != pos_esp:
@@ -189,7 +187,6 @@ if uploaded_files:
                     "Posición encontrada": f"{pos_real+1} ({col_index_to_letter(pos_real)})",
                 })
         else:
-            # Intento por normalización (para informar ubicación si hay “casi” igual)
             norm = normalize_header(esperado)
             if norm in mapa_norm_a_nombre:
                 casi = mapa_norm_a_nombre[norm]
@@ -197,7 +194,7 @@ if uploaded_files:
                 des_rows.append({
                     "Posición esperada": f"{pos_esp+1} ({letra_esp})",
                     "Encabezado esperado": esperado,
-                    "Posición encontrada": f"{pos_real+1} ({col_index_to_letter(pos_real)}) – (variante de nombre: '{casi}')",
+                    "Posición encontrada": f"{pos_real+1} ({col_index_to_letter(pos_real)}) – (variante '{casi}')",
                 })
             else:
                 des_rows.append({
@@ -206,18 +203,9 @@ if uploaded_files:
                     "Posición encontrada": "(no existe)",
                 })
 
-    st.subheader("📋 Tabla de Desalineaciones (posición esperada vs. encontrada)")
+    st.subheader("📋 Tabla de Desalineaciones")
     if des_rows:
-        df_des = pd.DataFrame(
-            des_rows,
-            columns=[
-                "Posición esperada",
-                "Encabezado esperado",
-                "Posición encontrada",
-            ],
-        )
-        st.dataframe(df_des, use_container_width=True)
-        make_downloads(df_des, "reporte_desalineaciones", sheet="Desalineaciones")
+        st.dataframe(pd.DataFrame(des_rows), use_container_width=True)
     else:
         st.success("✅ Todas las columnas están en la posición esperada.")
 
@@ -239,50 +227,31 @@ if uploaded_files:
                 extra_cols_ordered.append(nombre)
 
     if extra_rows:
-        df_extra = pd.DataFrame(extra_rows, columns=["Letra actual", "Encabezado no considerado", "Registros con datos"])
-        st.dataframe(df_extra, use_container_width=True)
-        make_downloads(df_extra, "no_mapeadas_con_datos", sheet="No_mapeadas")
+        st.dataframe(pd.DataFrame(extra_rows), use_container_width=True)
     else:
         st.info("No se encontraron columnas adicionales con datos.")
 
     st.divider()
 
-    # —— Construcción del archivo final (forzando ORDEN exacto) ——
+    # —— Construcción del archivo final ——
     st.subheader("🧩 Construcción del archivo final (orden fijo + extras al final)")
 
     columnas_finales = []
-    faltantes = []
-
-    # 1) Añadir en el ORDEN exacto solicitado
     for esperado in expected_names:
         if esperado in mapa_nombre_a_indice:
             columnas_finales.append(df_global.iloc[:, mapa_nombre_a_indice[esperado]].rename(esperado))
         else:
-            # Si no existe, columna vacía
-            faltantes.append(esperado)
             columnas_finales.append(pd.Series([None]*len(df_global), name=esperado))
 
-    # 2) Agregar automáticamente TODAS las columnas extra con datos al final (en el orden en que aparecieron)
     for nombre in extra_cols_ordered:
         if nombre not in [s.name for s in columnas_finales]:
             columnas_finales.append(df_global[nombre])
 
     df_resultado = pd.concat(columnas_finales, axis=1)
 
-    # 3) Garantizar que 'id_muestra' quede al FINAL (aunque viniera en otro lugar)
-    if "id_muestra" in df_resultado.columns:
-        col_id = df_resultado.pop("id_muestra")
-    else:
-        col_id = pd.Series([None]*len(df_resultado), name="id_muestra")
-    df_resultado["id_muestra"] = col_id  # asegura última posición
-
     st.subheader("📋 Vista previa – Archivo Final")
     st.dataframe(df_resultado.head(10), use_container_width=True)
     make_downloads(df_resultado, "archivo_consolidado", sheet="Consolidado")
 
-    # Mostrar faltantes si aplica
-    if faltantes:
-        with st.expander("Encabezados faltantes en los archivos cargados"):
-            st.write(pd.DataFrame({"Esperado (no encontrado)": faltantes}))
 
 
