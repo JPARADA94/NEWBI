@@ -24,30 +24,30 @@ st.markdown(
 
 # —————— Utilitarios ——————
 def col_letter_to_index(letter: str) -> int:
+    """Convierte letra(s) de columna de Excel (A, Z, AA, AB...) a índice base 0."""
     idx = 0
     for c in letter.upper():
         idx = idx * 26 + (ord(c) - ord("A") + 1)
     return idx - 1
 
-
 def col_index_to_letter(idx: int) -> str:
+    """Convierte índice base 0 a letra(s) de columna de Excel."""
     letter = ""
     while idx >= 0:
         letter = chr(idx % 26 + ord('A')) + letter
         idx = idx // 26 - 1
     return letter
 
-
 def normalize_header(s: str) -> str:
+    """Normaliza encabezados para coincidencias tolerantes."""
     if s is None:
         return ""
     s = s.strip()
-    s = s.replace("≥", ">=").replace("Μ", "µ").replace(" ", " ")  # NBSP a espacio
+    s = s.replace("≥", ">=").replace("Μ", "µ").replace("\u00A0", " ")  # NBSP → espacio
     s = s.replace("**", "")
     s = unicodedata.normalize('NFKD', s)
     s = "".join(ch for ch in s if not unicodedata.combining(ch))
     return s.lower()
-
 
 def df_to_xlsx_bytes(df: pd.DataFrame, sheet: str = "Hoja") -> BytesIO:
     """Convierte un DataFrame a bytes XLSX usando openpyxl (sin XlsxWriter)."""
@@ -57,44 +57,58 @@ def df_to_xlsx_bytes(df: pd.DataFrame, sheet: str = "Hoja") -> BytesIO:
     buf.seek(0)
     return buf
 
-
 def make_downloads(df: pd.DataFrame, base_name: str, sheet: str):
-    """Muestra botones de descarga CSV/XLSX para un DataFrame."""
+    """Botones de descarga CSV/XLSX para un DataFrame."""
     csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
     xlsx_bytes = df_to_xlsx_bytes(df, sheet=sheet)
     c1, c2 = st.columns(2)
     c1.download_button(
-        f"📥 {base_name} (CSV)", data=csv_bytes, file_name=f"{base_name}.csv", mime="text/csv"
+        f"📥 {base_name} (CSV)",
+        data=csv_bytes,
+        file_name=f"{base_name}.csv",
+        mime="text/csv",
     )
     c2.download_button(
-        f"📥 {base_name} (XLSX)", data=xlsx_bytes, file_name=f"{base_name}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        f"📥 {base_name} (XLSX)",
+        data=xlsx_bytes,
+        file_name=f"{base_name}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-
-# —————— Diccionario actualizado de columnas esperadas (ajustado) ——————
+# —————— Diccionario actualizado de columnas esperadas (con P, Q, R, S, AA) ——————
 columnas_esperadas = {
-    "A": "NOMBRE_CLIENTE",
-    "B": "NOMBRE_OPERACION",
-    "C": "N_MUESTRA",
-    "D": "CORRELATIVO",
-    "E": "FECHA_MUESTREO",
-    "F": "FECHA_INGRESO",
-    "G": "FECHA_RECEPCION",
-    "H": "FECHA_INFORME",
-    "I": "EDAD_COMPONENTE",
-    "J": "UNIDAD_EDAD_COMPONENTE",
-    "K": "EDAD_PRODUCTO",
-    "L": "UNIDAD_EDAD_PRODUCTO",
-    "M": "CANTIDAD_ADICIONADA",
-    "N": "UNIDAD_CANTIDAD_ADICIONADA",
-    "O": "PRODUCTO",
-    "U": "COMPONENTE",
-    "V": "MARCA_COMPONENTE",
-    "W": "MODELO_COMPONENTE",
-    "X": "DESCRIPTOR_COMPONENTE",
-    "Y": "ESTADO",
-    "Z": "NIVEL_DE_SERVICIO",
+    # Identificación / cabecera
+    "A":  "NOMBRE_CLIENTE",
+    "B":  "NOMBRE_OPERACION",
+    "C":  "N_MUESTRA",
+    "D":  "CORRELATIVO",
+    "E":  "FECHA_MUESTREO",
+    "F":  "FECHA_INGRESO",
+    "G":  "FECHA_RECEPCION",
+    "H":  "FECHA_INFORME",
+    "I":  "EDAD_COMPONENTE",
+    "J":  "UNIDAD_EDAD_COMPONENTE",
+    "K":  "EDAD_PRODUCTO",
+    "L":  "UNIDAD_EDAD_PRODUCTO",
+    "M":  "CANTIDAD_ADICIONADA",
+    "N":  "UNIDAD_CANTIDAD_ADICIONADA",
+    "O":  "PRODUCTO",
+    # NUEVAS del usuario (antes salían como no consideradas)
+    "P":  "TIPO_PRODUCTO",
+    "Q":  "EQUIPO",
+    "R":  "TIPO_EQUIPO",
+    "S":  "MARCA_EQUIPO",
+    "AA": "id_muestra",
+    # Componente
+    "U":  "COMPONENTE",
+    "V":  "MARCA_COMPONENTE",
+    "W":  "MODELO_COMPONENTE",
+    "X":  "DESCRIPTOR_COMPONENTE",
+    # Estado / servicio
+    "Y":  "ESTADO",
+    "Z":  "NIVEL_DE_SERVICIO",
+
+    # Ensayos y propiedades (mapa del usuario)
     "IQ": "ÍNDICE PQ (PQI) - 3",
     "MK": "PLATA (AG) - 19",
     "AK": "ALUMINIO (AL) - 20",
@@ -194,9 +208,15 @@ if uploaded_files:
 
     st.subheader("📋 Tabla de Desalineaciones")
     if des_rows:
-        df_des = pd.DataFrame(des_rows, columns=[
-            "Ubicación original","Encabezado esperado","Encontrado en origen","Nueva ubicación del esperado"
-        ])
+        df_des = pd.DataFrame(
+            des_rows,
+            columns=[
+                "Ubicación original",
+                "Encabezado esperado",
+                "Encontrado en origen",
+                "Nueva ubicación del esperado",
+            ],
+        )
         st.dataframe(df_des, use_container_width=True)
         make_downloads(df_des, "reporte_desalineaciones", sheet="Desalineaciones")
     else:
@@ -218,7 +238,7 @@ if uploaded_files:
                     "Registros con datos": int(datos),
                 })
     if extra_rows:
-        df_extra = pd.DataFrame(extra_rows, columns=["Letra","Encabezado no considerado","Registros con datos"])
+        df_extra = pd.DataFrame(extra_rows, columns=["Letra", "Encabezado no considerado", "Registros con datos"])
         st.dataframe(df_extra, use_container_width=True)
         make_downloads(df_extra, "no_mapeadas_con_datos", sheet="No_mapeadas")
     else:
@@ -282,3 +302,4 @@ if uploaded_files:
     if faltantes:
         with st.expander("Encabezados faltantes en los archivos cargados"):
             st.write(pd.DataFrame({"Esperado": faltantes}))
+
