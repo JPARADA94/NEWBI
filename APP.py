@@ -14,11 +14,11 @@ st.markdown(
 1. Sube **uno o varios archivos Excel (.xlsx)**.
 2. El sistema unirá todos los archivos en un solo conjunto.
 3. Validará los encabezados sobre el conjunto completo.
-4. Si hay desalineaciones, verás **dos tablas**:
-   - **Migraciones de encabezados:** ubicación donde estaba, el encabezado que se suponía y la nueva ubicación del esperado.
-   - **Columnas con datos no contempladas:** encabezados con datos que no están en el mapa esperado.
-5. Opcional: reordenar por **NOMBRE** con coincidencia aproximada.
-6. Descargar **Excel consolidado** y **reportes** (CSV/XLSX).
+4. Generará dos reportes:
+   - **Tabla de desalineaciones**: ubicación original, encabezado esperado, lo encontrado y nueva ubicación del esperado.
+   - **Tabla de columnas con datos no mapeadas**.
+5. Permite **incluir columnas extra con datos**.
+6. Genera **un único archivo Excel consolidado** y los reportes descargables.
 """
 )
 
@@ -42,13 +42,37 @@ def normalize_header(s: str) -> str:
     if s is None:
         return ""
     s = s.strip()
-    s = s.replace("≥", ">=").replace("Μ", "µ").replace(" ", " ")
+    s = s.replace("≥", ">=").replace("Μ", "µ").replace(" ", " ")  # NBSP a espacio
     s = s.replace("**", "")
     s = unicodedata.normalize('NFKD', s)
     s = "".join(ch for ch in s if not unicodedata.combining(ch))
     return s.lower()
 
-# —————— Diccionario esperado (actualizado con tus ubicaciones) ——————
+
+def df_to_xlsx_bytes(df: pd.DataFrame, sheet: str = "Hoja") -> BytesIO:
+    """Convierte un DataFrame a bytes XLSX usando openpyxl (sin XlsxWriter)."""
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as w:
+        df.to_excel(w, index=False, sheet_name=sheet)
+    buf.seek(0)
+    return buf
+
+
+def make_downloads(df: pd.DataFrame, base_name: str, sheet: str):
+    """Muestra botones de descarga CSV/XLSX para un DataFrame."""
+    csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
+    xlsx_bytes = df_to_xlsx_bytes(df, sheet=sheet)
+    c1, c2 = st.columns(2)
+    c1.download_button(
+        f"📥 {base_name} (CSV)", data=csv_bytes, file_name=f"{base_name}.csv", mime="text/csv"
+    )
+    c2.download_button(
+        f"📥 {base_name} (XLSX)", data=xlsx_bytes, file_name=f"{base_name}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+# —————— Diccionario actualizado de columnas esperadas (ajustado) ——————
 columnas_esperadas = {
     "A": "NOMBRE_CLIENTE",
     "B": "NOMBRE_OPERACION",
@@ -65,11 +89,6 @@ columnas_esperadas = {
     "M": "CANTIDAD_ADICIONADA",
     "N": "UNIDAD_CANTIDAD_ADICIONADA",
     "O": "PRODUCTO",
-    "P": "TIPO_PRODUCTO",
-    "Q": "EQUIPO",
-    "R": "TIPO_EQUIPO",
-    "S": "MARCA_EQUIPO",
-    "T": "MODELO_EQUIPO",
     "U": "COMPONENTE",
     "V": "MARCA_COMPONENTE",
     "W": "MODELO_COMPONENTE",
@@ -139,109 +158,75 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-st.caption(f"Mapa esperado con {len(columnas_esperadas)} ubicaciones.")
-
 if uploaded_files:
+    # Unir todo como texto
     dfs = []
-    for up in uploaded_files:
-        df = pd.read_excel(up, header=0, dtype=str, engine="openpyxl")
-        df["Archivo_Origen"] = up.name
+    for uploaded in uploaded_files:
+        df = pd.read_excel(uploaded, header=0, dtype=str, engine="openpyxl")
+        df["Archivo_Origen"] = uploaded.name
         dfs.append(df)
     df_global = pd.concat(dfs, ignore_index=True)
 
     columnas_reales = [c.strip() for c in df_global.columns.tolist()]
     expected_names = list(columnas_esperadas.values())
-    expected_set = set(expected_names)
 
-    # ====== TABLA 1: Migraciones de encabezados ======
-    migraciones_rows = []
-    columnas_ok = []
+    # —— Reporte de desalineaciones ——
+    des_rows = []
     for letra, esperado in columnas_esperadas.items():
         idx = col_letter_to_index(letra)
         if idx < len(columnas_reales):
-            encabezado_en_origen = columnas_reales[idx]
-            if encabezado_en_origen == esperado:
-                columnas_ok.append(idx)
-            else:
+            encontrado = columnas_reales[idx]
+            if encontrado != esperado:
                 nueva_letra = col_index_to_letter(columnas_reales.index(esperado)) if esperado in columnas_reales else "—"
-                migraciones_rows.append({
-                    "UBICACIÓN ORIGEN": letra,
-                    "ENCABEZADO ESPERADO EN ORIGEN": esperado,
-                    "ENCABEZADO QUE ESTÁ EN ORIGEN": encabezado_en_origen,
-                    "NUEVA UBICACIÓN DEL ESPERADO": nueva_letra,
+                des_rows.append({
+                    "Ubicación original": letra,
+                    "Encabezado esperado": esperado,
+                    "Encontrado en origen": encontrado,
+                    "Nueva ubicación del esperado": nueva_letra,
                 })
         else:
-            migraciones_rows.append({
-                "UBICACIÓN ORIGEN": letra,
-                "ENCABEZADO ESPERADO EN ORIGEN": esperado,
-                "ENCABEZADO QUE ESTÁ EN ORIGEN": "(no existe)",
-                "NUEVA UBICACIÓN DEL ESPERADO": "—",
+            des_rows.append({
+                "Ubicación original": letra,
+                "Encabezado esperado": esperado,
+                "Encontrado en origen": "(no existe)",
+                "Nueva ubicación del esperado": "—",
             })
 
-    total_esperadas = len(columnas_esperadas)
-    total_ok = len(columnas_ok)
-    total_err = total_esperadas - total_ok
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Encabezados esperados", total_esperadas)
-    c2.metric("Correctos en posición", total_ok)
-    c3.metric("Con desalineación", total_err)
-
-    if migraciones_rows:
-        df_migraciones = pd.DataFrame(migraciones_rows, columns=[
-            "UBICACIÓN ORIGEN",
-            "ENCABEZADO ESPERADO EN ORIGEN",
-            "ENCABEZADO QUE ESTÁ EN ORIGEN",
-            "NUEVA UBICACIÓN DEL ESPERADO",
+    st.subheader("📋 Tabla de Desalineaciones")
+    if des_rows:
+        df_des = pd.DataFrame(des_rows, columns=[
+            "Ubicación original","Encabezado esperado","Encontrado en origen","Nueva ubicación del esperado"
         ])
-        st.subheader("📌 Migraciones de encabezados (posición real vs. esperada)")
-        st.dataframe(df_migraciones, use_container_width=True)
-        # Descargas
-        mig_csv = df_migraciones.to_csv(index=False).encode("utf-8-sig")
-        mig_xlsx = BytesIO()
-        with pd.ExcelWriter(mig_xlsx, engine="xlsxwriter") as w:
-            df_migraciones.to_excel(w, index=False, sheet_name="Migraciones")
-            w.sheets["Migraciones"].set_column(0, 3, 48)
-        mig_xlsx.seek(0)
-        m1, m2 = st.columns(2)
-        m1.download_button("📥 Migraciones (CSV)", data=mig_csv, file_name="migraciones_columnas.csv", mime="text/csv")
-        m2.download_button("📥 Migraciones (XLSX)", data=mig_xlsx, file_name="migraciones_columnas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.dataframe(df_des, use_container_width=True)
+        make_downloads(df_des, "reporte_desalineaciones", sheet="Desalineaciones")
     else:
-        st.success("✅ No hay migraciones: todo coincide en su ubicación esperada.")
+        st.success("✅ Todas las columnas coinciden con lo esperado.")
 
     st.divider()
 
-    # ====== TABLA 2: Columnas con datos no contempladas ======
-    st.subheader("🟠 Columnas con datos que no estaban en el mapa esperado")
-    expected_set_norm = {normalize_header(n) for n in expected_set}
+    # —— Columnas no mapeadas con datos ——
+    st.subheader("🟠 Columnas con datos que no estaban en el mapa")
+    expected_set_norm = {normalize_header(v) for v in columnas_esperadas.values()}
     extra_rows = []
     for idx, nombre in enumerate(columnas_reales):
         if normalize_header(nombre) not in expected_set_norm:
             datos = df_global.iloc[:, idx].notna().sum()
             if datos > 0:
                 extra_rows.append({
-                    "LETRA": col_index_to_letter(idx),
-                    "ENCABEZADO NO CONSIDERADO": nombre,
-                    "REGISTROS CON DATOS": int(datos),
+                    "Letra": col_index_to_letter(idx),
+                    "Encabezado no considerado": nombre,
+                    "Registros con datos": int(datos),
                 })
     if extra_rows:
-        df_no_consideradas = pd.DataFrame(extra_rows, columns=["LETRA","ENCABEZADO NO CONSIDERADO","REGISTROS CON DATOS"]) 
-        st.dataframe(df_no_consideradas, use_container_width=True)
-        ex_csv = df_no_consideradas.to_csv(index=False).encode("utf-8-sig")
-        ex_xlsx = BytesIO()
-        with pd.ExcelWriter(ex_xlsx, engine="xlsxwriter") as w2:
-            df_no_consideradas.to_excel(w2, index=False, sheet_name="No_mapeadas")
-            w2.sheets["No_mapeadas"].set_column(0, 2, 42)
-        ex_xlsx.seek(0)
-        e1, e2 = st.columns(2)
-        e1.download_button("📥 No mapeadas (CSV)", data=ex_csv, file_name="no_mapeadas_con_datos.csv", mime="text/csv")
-        e2.download_button("📥 No mapeadas (XLSX)", data=ex_xlsx, file_name="no_mapeadas_con_datos.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        df_extra = pd.DataFrame(extra_rows, columns=["Letra","Encabezado no considerado","Registros con datos"])
+        st.dataframe(df_extra, use_container_width=True)
+        make_downloads(df_extra, "no_mapeadas_con_datos", sheet="No_mapeadas")
     else:
-        st.info("No se detectaron columnas con datos por fuera del mapa.")
+        st.info("No se encontraron columnas adicionales con datos.")
 
     st.divider()
 
-    # ====== REORDENAMIENTO POR NOMBRE (opcional) ======
+    # —— Construcción del archivo final por NOMBRE ——
     st.subheader("🧩 Construcción del archivo final")
     usar_normalizado = st.checkbox("Sugerir coincidencias usando comparación normalizada (aproximada)", value=False)
 
@@ -253,38 +238,47 @@ if uploaded_files:
     sugerencias = []
     for esperado in expected_names:
         if esperado in mapa_nombre_a_indice:
-            columnas_finales.append(df_global.iloc[:, mapa_nombre_a_indice[esperado]])
+            columnas_finales.append(df_global.iloc[:, mapa_nombre_a_indice[esperado]].rename(esperado))
         else:
             if usar_normalizado:
                 norm = normalize_header(esperado)
                 if norm in mapa_norm_a_nombre:
                     casi = mapa_norm_a_nombre[norm]
                     sugerencias.append({"Esperado": esperado, "Coincidencia aproximada": casi})
-                    columnas_finales.append(df_global.iloc[:, mapa_nombre_a_indice[casi]])
+                    columnas_finales.append(df_global.iloc[:, mapa_nombre_a_indice[casi]].rename(esperado))
                 else:
                     faltantes.append(esperado)
-                    columnas_finales.append(pd.Series([None] * len(df_global), name=esperado))
+                    columnas_finales.append(pd.Series([None]*len(df_global), name=esperado))
             else:
                 faltantes.append(esperado)
-                columnas_finales.append(pd.Series([None] * len(df_global), name=esperado))
+                columnas_finales.append(pd.Series([None]*len(df_global), name=esperado))
 
     df_resultado = pd.concat(columnas_finales, axis=1)
 
+    # Incluir columnas extra seleccionadas
+    st.subheader("📌 Columnas extra con datos para incluir en el final (opcional)")
+    if extra_rows:
+        opciones_extra = {f"{r['Letra']} – {r['Encabezado no considerado']}": r['Letra'] for r in extra_rows}
+        seleccionadas = st.multiselect("Selecciona las columnas extra a incluir:", options=list(opciones_extra.keys()))
+        if seleccionadas:
+            letras_sel = [opciones_extra[s] for s in seleccionadas]
+            idx_sel = [col_letter_to_index(L) for L in letras_sel]
+            df_resultado = pd.concat([df_resultado, df_global.iloc[:, idx_sel]], axis=1)
+    else:
+        st.caption("No hay columnas extra con datos disponibles para añadir.")
+
+    # Añadir origen
     if "Archivo_Origen" in df_global.columns:
         df_resultado["Archivo_Origen"] = df_global["Archivo_Origen"]
 
     st.subheader("📋 Vista previa – Archivo Final")
     st.dataframe(df_resultado.head(10), use_container_width=True)
+    make_downloads(df_resultado, "archivo_consolidado", sheet="Consolidado")
 
-    buf_xlsx = BytesIO()
-    with pd.ExcelWriter(buf_xlsx, engine="xlsxwriter") as writer:
-        df_resultado.to_excel(writer, index=False, sheet_name="Consolidado")
-        writer.sheets["Consolidado"].set_column(0, df_resultado.shape[1]-1, 22)
-    buf_xlsx.seek(0)
-
-    st.download_button(
-        label="📥 Descargar Excel Final Consolidado",
-        data=buf_xlsx,
-        file_name="archivo_consolidado.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+    # Mostrar sugerencias/faltantes si aplica
+    if sugerencias:
+        with st.expander("Coincidencias aproximadas aplicadas"):
+            st.write(pd.DataFrame(sugerencias))
+    if faltantes:
+        with st.expander("Encabezados faltantes en los archivos cargados"):
+            st.write(pd.DataFrame({"Esperado": faltantes}))
