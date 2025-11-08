@@ -88,7 +88,7 @@ if files:
             # === RENOMBRES ===
             rename_map = {}
             if "ESTADO_REPORTE" in df_out.columns:
-                rename_map["ESTADO_MUESTRA"] = "ESTADO"
+                rename_map["ESTADO_REPORTE"] = "ESTADO"
             if "CONTENIDO GLICOL - 105" in df_out.columns:
                 rename_map["ESTADO_MUESTRA"] = "CONTENIDO GLICOL  - 105"
             if "ÍNDICE VISCOSIDAD - 359" in df_out.columns:
