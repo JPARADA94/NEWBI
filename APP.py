@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
+from datetime import datetime
 
 # ===================== Configuración =====================
 st.set_page_config(page_title="Filtrar por Encabezados EXACTOS", layout="wide")
@@ -66,34 +67,37 @@ REQUERIDOS = [
     "id_muestra"
 ]
 
-# Nota: 'Archivo_Origen' se agrega SIEMPRE al final.
-
 # ===================== Carga de archivos =====================
 files = st.file_uploader("📤 Sube uno o varios Excel (.xlsx)", type="xlsx", accept_multiple_files=True)
 
 if files:
-    faltantes_global = []     # faltantes en cualquier archivo (para detener)
-    extras_tabla = []         # columnas no requeridas con >1 dato (ignorando celda = encabezado)
-    dfs_filtrados = []        # salida por archivo con Archivo_Origen
+    faltantes_global = []
+    extras_tabla = []
+    dfs_filtrados = []
 
     for f in files:
         df = pd.read_excel(f, dtype=str, engine="openpyxl")
         cols = df.columns.tolist()
 
-        # 1) Validación exacta: reunir faltantes (si hay, se detiene al final)
         faltantes = [c for c in REQUERIDOS if c not in cols]
         if faltantes:
             for col in faltantes:
                 faltantes_global.append({"Archivo": f.name, "Columna requerida NO encontrada": col})
         else:
-            # 2) Armar salida SOLO con requeridos (en orden) + Archivo_Origen al final
             df_out = df[REQUERIDOS].copy()
+
+            # === RENOMBRES ===
+            rename_map = {}
+            if "ESTADO_MUESTRA" in df_out.columns:
+                rename_map["ESTADO_MUESTRA"] = "ESTADO"
+            if "ÍNDICE VISCOSIDAD - 359" in df_out.columns:
+                rename_map["ÍNDICE VISCOSIDAD - 359"] = "**ÍNDICE VISCOSIDAD - 359"
+            if rename_map:
+                df_out = df_out.rename(columns=rename_map)
+
             df_out["Archivo_Origen"] = f.name
             dfs_filtrados.append(df_out)
 
-            # 3) Analizar columnas NO requeridas -> contar SOLO valores >1 que:
-            #    - no sean vacíos/espacios/nulos
-            #    - sean distintos (case-insensitive) al nombre del encabezado
             requeridos_set = set(REQUERIDOS)
             for idx, col in enumerate(cols):
                 if col in requeridos_set:
@@ -111,42 +115,50 @@ if files:
                         "Posición original (Excel)": col_index_to_letter(idx)
                     })
 
-    # 4) Si hay faltantes en CUALQUIER archivo -> avisar y detener.
     if faltantes_global:
         st.error("❌ Faltan columnas REQUERIDAS (coincidencia EXACTA). Proceso detenido.")
         df_falt = pd.DataFrame(faltantes_global, columns=["Archivo","Columna requerida NO encontrada"])
         st.dataframe(df_falt, use_container_width=True)
         st.stop()
 
-    # 5) Todo OK -> tabla de extras y descarga
     st.success("✅ Todos los archivos contienen TODAS las columnas requeridas con nombre EXACTO.")
 
     st.subheader("🟠 Columnas NO requeridas con >1 dato (ignorando celdas iguales al encabezado)")
     if extras_tabla:
-        df_extras = pd.DataFrame(extras_tabla, columns=[
-            "Archivo","Encabezado (no requerido)","Registros con datos (>1, sin repetir encabezado)",
-            "Posición original (n)","Posición original (Excel)"
-        ])
+        df_extras = pd.DataFrame(extras_tabla)
         st.dataframe(df_extras, use_container_width=True)
         extras_xlsx = df_to_xlsx_bytes(df_extras, sheet="Extras_con_datos")
-        st.download_button("📥 Descargar tabla de extras (XLSX)", extras_xlsx,
-                           file_name="extras_con_datos.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button(
+            "📥 Descargar tabla de extras (XLSX)",
+            extras_xlsx,
+            file_name="extras_con_datos.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
     else:
         st.info("No se encontraron columnas NO requeridas con más de 1 dato.")
 
-    # 6) Descargar consolidado final (Hoja = 'Sheet1', sin Tabla)
+    # ====== Consolidado final ======
     df_final = pd.concat(dfs_filtrados, ignore_index=True)
     st.subheader("📋 Vista previa del archivo final (solo columnas requeridas + Archivo_Origen)")
     st.dataframe(df_final.head(15), use_container_width=True)
 
+    # ====== Nombre del archivo dinámico ======
+    cliente = str(df_final["NOMBRE_CLIENTE"].dropna().iloc[0]).strip().replace(" ", "_")
+    fecha_actual = datetime.now().strftime("%Y%m%d")
+    nombre_archivo = f"{cliente}_{fecha_actual}.xlsx"
+
     xlsx_bytes = df_to_xlsx_bytes(df_final, sheet="Sheet1")
-    # Mostrar letra de la última columna
     ultima_letra = col_index_to_letter(len(df_final.columns) - 1)
-    st.caption(f"ℹ️ 'Archivo_Origen' quedó como última columna: **{ultima_letra}** (archivo sin tabla, hoja 'Sheet1').")
 
-    st.download_button("📥 Descargar archivo final (XLSX)", xlsx_bytes,
-                       file_name="consolidado_requeridos.xlsx",
-                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    st.caption(
+        f"ℹ️ 'Archivo_Origen' quedó como última columna: **{ultima_letra}** "
+        f"(archivo sin tabla, hoja 'Sheet1')."
+    )
 
+    st.download_button(
+        f"📥 Descargar archivo final: {nombre_archivo}",
+        xlsx_bytes,
+        file_name=nombre_archivo,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
