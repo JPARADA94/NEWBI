@@ -50,7 +50,7 @@ REQUERIDOS = [
     "SEPARABILIDAD AGUA A 54 °C (ACEITE) - 6","SEPARABILIDAD AGUA A 54 °C (AGUA) - 7",
     "SEPARABILIDAD AGUA A 54 °C (EMULSIÓN) - 8","SEPARABILIDAD AGUA A 54 °C (TIEMPO) - 83","**ULTRACENTRÍFUGA (UC) - 1",
     # ================= NUEVAS COLUMNAS =================
-    "ESTADO_MUESTRA",
+    "ESTADO_REPORTE",
     "ESTADO_PRODUCTO",
     "ESTADO_DESGASTE",
     "ESTADO_CONTAMINACION",
@@ -88,7 +88,7 @@ if files:
 
             # === RENOMBRES ===
             rename_map = {}
-            if "ESTADO_MUESTRA" in df_out.columns:
+            if "ESTADO_REPORTE" in df_out.columns:
                 rename_map["ESTADO_MUESTRA"] = "ESTADO"
             if "CONTENIDO GLICOL - 105" in df_out.columns:
                 rename_map["ESTADO_MUESTRA"] = "CONTENIDO GLICOL  - 105"
