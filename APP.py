@@ -110,4 +110,67 @@ if files:
         # Columnas NO requeridas con datos válidos
         requeridos_set = set(REQUERIDOS)
         for idx, col in enumerate(cols):
+            if col in requeridos_set:
+                continue
+            serie = df[col].astype(str).str.strip()
+            serie = serie.replace({"": pd.NA, "nan": pd.NA, "NaN": pd.NA})
+            mask_valido = serie.notna() & (serie.str.casefold() != str(col).strip().casefold())
+            datos_validos = int(mask_valido.sum())
+            if datos_validos > 1:
+                extras_tabla.append({
+                    "Archivo": f.name,
+                    "Encabezado (no requerido)": col,
+                    "Registros con datos (>1, sin repetir encabezado)": datos_validos,
+                    "Posición original (n)": idx + 1,
+                    "Posición original (Excel)": col_index_to_letter(idx)
+                })
+
+    # === Si hubo faltantes en cualquier archivo, se detiene ===
+    if faltantes_global:
+        st.error("❌ Existen archivos con columnas faltantes. Revisa el reporte.")
+        st.dataframe(pd.DataFrame(faltantes_global), use_container_width=True)
+        st.stop()
+
+    st.success("✅ Todos los archivos contienen TODAS las columnas requeridas con nombre EXACTO.")
+
+    # ====== Columnas NO requeridas ======
+    st.subheader("🟠 Columnas NO requeridas con >1 dato (ignorando celdas iguales al encabezado)")
+    if extras_tabla:
+        df_extras = pd.DataFrame(extras_tabla)
+        st.dataframe(df_extras, use_container_width=True)
+        extras_xlsx = df_to_xlsx_bytes(df_extras, sheet="Extras_con_datos")
+        st.download_button(
+            "📥 Descargar tabla de extras (XLSX)",
+            extras_xlsx,
+            file_name="extras_con_datos.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        st.info("No se encontraron columnas NO requeridas con más de 1 dato.")
+
+    # ====== Consolidado final ======
+    df_final = pd.concat(dfs_filtrados, ignore_index=True)
+    st.subheader("📋 Vista previa del archivo final (solo columnas requeridas + Archivo_Origen)")
+    st.dataframe(df_final.head(15), use_container_width=True)
+
+    # ====== Nombre del archivo dinámico ======
+    cliente = str(df_final["NOMBRE_CLIENTE"].dropna().iloc[0]).strip().replace(" ", "_")
+    fecha_actual = datetime.now().strftime("%Y%m%d")
+    nombre_archivo = f"{cliente}_{fecha_actual}.xlsx"
+
+    xlsx_bytes = df_to_xlsx_bytes(df_final, sheet="Sheet1")
+    ultima_letra = col_index_to_letter(len(df_final.columns) - 1)
+
+    st.caption(
+        f"ℹ️ 'Archivo_Origen' quedó como última columna: **{ultima_letra}** "
+        f"(archivo sin tabla, hoja 'Sheet1')."
+    )
+
+    st.download_button(
+        f"📥 Descargar archivo final: {nombre_archivo}",
+        xlsx_bytes,
+        file_name=nombre_archivo,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
 
