@@ -29,6 +29,18 @@ def df_to_xlsx_bytes(df: pd.DataFrame, sheet: str = "Sheet1") -> BytesIO:
     buf.seek(0)
     return buf
 
+# ===================== Función para detectar columnas faltantes =====================
+def verificar_columnas_faltantes(cols_archivo, cols_requeridos):
+    """Devuelve lista de columnas faltantes y las muestra en pantalla."""
+    faltantes = [c for c in cols_requeridos if c not in cols_archivo]
+    if faltantes:
+        st.error("❌ Este archivo NO cumple con los encabezados requeridos.")
+        st.dataframe(
+            pd.DataFrame({"Columnas faltantes": faltantes}),
+            use_container_width=True
+        )
+    return faltantes
+
 # ===================== Encabezados requeridos (EXACTOS y en ORDEN) =====================
 REQUERIDOS = [
     "NOMBRE_CLIENTE","NOMBRE_OPERACION","N_MUESTRA","CORRELATIVO","FECHA_MUESTREO","FECHA_INGRESO",
@@ -49,21 +61,10 @@ REQUERIDOS = [
     "ESPUMA SEC 1 - TENDENCIA - 59","ESTAÑO (SN) - 37","ÍNDICE VISCOSIDAD - 359","RPVOT - 10",
     "SEPARABILIDAD AGUA A 54 °C (ACEITE) - 6","SEPARABILIDAD AGUA A 54 °C (AGUA) - 7",
     "SEPARABILIDAD AGUA A 54 °C (EMULSIÓN) - 8","SEPARABILIDAD AGUA A 54 °C (TIEMPO) - 83","**ULTRACENTRÍFUGA (UC) - 1",
-    # ================= NUEVAS COLUMNAS =================
-    "ESTADO_PRODUCTO",
-    "ESTADO_DESGASTE",
-    "ESTADO_CONTAMINACION",
-    "N_SOLICITUD",
-    "CAMBIO_DE_PRODUCTO",
-    "CAMBIO_DE_FILTRO",
-    "TEMPERATURA_RESERVORIO",
-    "UNIDAD_TEMPERATURA_RESERVORIO",
-    "COMENTARIO_CLIENTE",
-    "TIPO_DE_COMBUSTIBLE",
-    "TIPO_DE_REFRIGERANTE",
-    "USUARIO",
-    "COMENTARIO_REPORTE",
-    "id_muestra"
+    # NUEVAS COLUMNAS
+    "ESTADO_PRODUCTO","ESTADO_DESGASTE","ESTADO_CONTAMINACION","N_SOLICITUD","CAMBIO_DE_PRODUCTO",
+    "CAMBIO_DE_FILTRO","TEMPERATURA_RESERVORIO","UNIDAD_TEMPERATURA_RESERVORIO","COMENTARIO_CLIENTE",
+    "TIPO_DE_COMBUSTIBLE","TIPO_DE_REFRIGERANTE","USUARIO","COMENTARIO_REPORTE","id_muestra"
 ]
 
 # ===================== Carga de archivos =====================
@@ -78,88 +79,35 @@ if files:
         df = pd.read_excel(f, dtype=str, engine="openpyxl")
         cols = df.columns.tolist()
 
-        faltantes = [c for c in REQUERIDOS if c not in cols]
+        # === Verificación usando la nueva función ===
+        faltantes = verificar_columnas_faltantes(cols, REQUERIDOS)
+
         if faltantes:
             for col in faltantes:
-                faltantes_global.append({"Archivo": f.name, "Columna requerida NO encontrada": col})
-        else:
-            df_out = df[REQUERIDOS].copy()
+                faltantes_global.append({
+                    "Archivo": f.name,
+                    "Columna requerida NO encontrada": col
+                })
+            continue  # NO procesa este archivo, sigue con el siguiente
 
-            # === RENOMBRES ===
-            rename_map = {}
-            if "ESTADO_REPORTE" in df_out.columns:
-                rename_map["ESTADO_REPORTE"] = "ESTADO"
-            if "CONTENIDO GLICOL - 105" in df_out.columns:
-                rename_map["ESTADO_MUESTRA"] = "CONTENIDO GLICOL  - 105"
-            if "ÍNDICE VISCOSIDAD - 359" in df_out.columns:
-                rename_map["ÍNDICE VISCOSIDAD - 359"] = "**ÍNDICE VISCOSIDAD - 359"
-            if rename_map:
-                df_out = df_out.rename(columns=rename_map)
+        # Si no faltan columnas, continúa normal
+        df_out = df[REQUERIDOS].copy()
 
-            df_out["Archivo_Origen"] = f.name
-            dfs_filtrados.append(df_out)
+        # === RENOMBRES ===
+        rename_map = {}
+        if "ESTADO_REPORTE" in df_out.columns:
+            rename_map["ESTADO_REPORTE"] = "ESTADO"
+        if "CONTENIDO GLICOL - 105" in df_out.columns:
+            rename_map["ESTADO_MUESTRA"] = "CONTENIDO GLICOL  - 105"
+        if "ÍNDICE VISCOSIDAD - 359" in df_out.columns:
+            rename_map["ÍNDICE VISCOSIDAD - 359"] = "**ÍNDICE VISCOSIDAD - 359"
+        if rename_map:
+            df_out = df_out.rename(columns=rename_map)
 
-            requeridos_set = set(REQUERIDOS)
-            for idx, col in enumerate(cols):
-                if col in requeridos_set:
-                    continue
-                serie = df[col].astype(str).str.strip()
-                serie = serie.replace({"": pd.NA, "nan": pd.NA, "NaN": pd.NA})
-                mask_valido = serie.notna() & (serie.str.casefold() != str(col).strip().casefold())
-                datos_validos = int(mask_valido.sum())
-                if datos_validos > 1:
-                    extras_tabla.append({
-                        "Archivo": f.name,
-                        "Encabezado (no requerido)": col,
-                        "Registros con datos (>1, sin repetir encabezado)": datos_validos,
-                        "Posición original (n)": idx + 1,
-                        "Posición original (Excel)": col_index_to_letter(idx)
-                    })
+        df_out["Archivo_Origen"] = f.name
+        dfs_filtrados.append(df_out)
 
-    if faltantes_global:
-        st.error("❌ Faltan columnas REQUERIDAS (coincidencia EXACTA). Proceso detenido.")
-        df_falt = pd.DataFrame(faltantes_global, columns=["Archivo","Columna requerida NO encontrada"])
-        st.dataframe(df_falt, use_container_width=True)
-        st.stop()
-
-    st.success("✅ Todos los archivos contienen TODAS las columnas requeridas con nombre EXACTO.")
-
-    st.subheader("🟠 Columnas NO requeridas con >1 dato (ignorando celdas iguales al encabezado)")
-    if extras_tabla:
-        df_extras = pd.DataFrame(extras_tabla)
-        st.dataframe(df_extras, use_container_width=True)
-        extras_xlsx = df_to_xlsx_bytes(df_extras, sheet="Extras_con_datos")
-        st.download_button(
-            "📥 Descargar tabla de extras (XLSX)",
-            extras_xlsx,
-            file_name="extras_con_datos.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    else:
-        st.info("No se encontraron columnas NO requeridas con más de 1 dato.")
-
-    # ====== Consolidado final ======
-    df_final = pd.concat(dfs_filtrados, ignore_index=True)
-    st.subheader("📋 Vista previa del archivo final (solo columnas requeridas + Archivo_Origen)")
-    st.dataframe(df_final.head(15), use_container_width=True)
-
-    # ====== Nombre del archivo dinámico ======
-    cliente = str(df_final["NOMBRE_CLIENTE"].dropna().iloc[0]).strip().replace(" ", "_")
-    fecha_actual = datetime.now().strftime("%Y%m%d")
-    nombre_archivo = f"{cliente}_{fecha_actual}.xlsx"
-
-    xlsx_bytes = df_to_xlsx_bytes(df_final, sheet="Sheet1")
-    ultima_letra = col_index_to_letter(len(df_final.columns) - 1)
-
-    st.caption(
-        f"ℹ️ 'Archivo_Origen' quedó como última columna: **{ultima_letra}** "
-        f"(archivo sin tabla, hoja 'Sheet1')."
-    )
-
-    st.download_button(
-        f"📥 Descargar archivo final: {nombre_archivo}",
-        xlsx_bytes,
-        file_name=nombre_archivo,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        # Columnas NO requeridas con datos válidos
+        requeridos_set = set(REQUERIDOS)
+        for idx, col in enumerate(cols):
 
