@@ -41,7 +41,7 @@ def verificar_columnas_faltantes(cols_archivo, cols_requeridos):
         )
     return faltantes
 
-# ===================== Encabezados requeridos (EXACTOS y en ORDEN) =====================
+# ===================== Encabezados requeridos (EXACTOS y ORDENADOS) =====================
 REQUERIDOS = [
     "NOMBRE_CLIENTE","NOMBRE_OPERACION","N_MUESTRA","CORRELATIVO","FECHA_MUESTREO","FECHA_INGRESO",
     "FECHA_RECEPCION","FECHA_INFORME","EDAD_COMPONENTE","UNIDAD_EDAD_COMPONENTE","EDAD_PRODUCTO",
@@ -61,10 +61,54 @@ REQUERIDOS = [
     "ESPUMA SEC 1 - TENDENCIA - 59","ESTAÑO (SN) - 37","ÍNDICE VISCOSIDAD - 359","RPVOT - 10",
     "SEPARABILIDAD AGUA A 54 °C (ACEITE) - 6","SEPARABILIDAD AGUA A 54 °C (AGUA) - 7",
     "SEPARABILIDAD AGUA A 54 °C (EMULSIÓN) - 8","SEPARABILIDAD AGUA A 54 °C (TIEMPO) - 83","**ULTRACENTRÍFUGA (UC) - 1",
-    # NUEVAS COLUMNAS
     "ESTADO_PRODUCTO","ESTADO_DESGASTE","ESTADO_CONTAMINACION","N_SOLICITUD","CAMBIO_DE_PRODUCTO",
     "CAMBIO_DE_FILTRO","TEMPERATURA_RESERVORIO","UNIDAD_TEMPERATURA_RESERVORIO","COMENTARIO_CLIENTE",
     "TIPO_DE_COMBUSTIBLE","TIPO_DE_REFRIGERANTE","USUARIO","COMENTARIO_REPORTE","id_muestra"
+]
+
+# ===================== NUEVAS COLUMNAS ESTADO (AL FINAL DEL EXCEL) =====================
+
+NUEVAS_ESTADO = [
+    "ESTADO_MUESTRA",
+    "AGUA CUALITATIVA (PLANCHA) - 360 - Estado",
+    "AGUA (IR) - 81 - Estado",
+    "ALUMINIO (AL) - 20 - Estado",
+    "BARIO (BA) - 21 - Estado",
+    "BORO (B) - 18 - Estado",
+    "CADMIO (CD) - 23 - Estado",
+    "CALCIO (CA) - 22 - Estado",
+    "COBRE (CU) - 25 - Estado",
+    "CÓDIGO ISO (4/6/14) - 47 - Estado",
+    "CONTENIDO AGUA (KARL FISCHER) - 41 - Estado",
+    "CONTEO PARTÍCULAS >= 14 ΜM - 48 - Estado",
+    "CONTEO PARTÍCULAS >= 4 ΜM - 49 - Estado",
+    "CONTEO PARTÍCULAS >= 6 ΜM - 50 - Estado",
+    "CROMO (CR) - 24 - Estado",
+    "DILUCIÓN POR COMBUSTIBLE - 46 - Estado",
+    "ESTAÑO (SN) - 37 - Estado",
+    "FÓSFORO (P) - 34 - Estado",
+    "HIERRO (FE) - 26 - Estado",
+    "HOLLÍN - 79 - Estado",
+    "ÍNDICE PQ (PQI) - 3 - Estado",
+    "MAGNESIO (MG) - 28 - Estado",
+    "MANGANESO (MN) - 29 - Estado",
+    "MOLIBDENO (MO) - 30 - Estado",
+    "NÍQUEL (NI) - 32 - Estado",
+    "NITRACIÓN - 82 - Estado",
+    "NÚMERO ÁCIDO (AN) - 43 - Estado",
+    "NÚMERO BÁSICO (BN) - 17 - Estado",
+    "NÚMERO BÁSICO (BN) - 12 - Estado",
+    "OXIDACIÓN - 80 - Estado",
+    "PLATA (AG) - 19 - Estado",
+    "PLOMO (PB) - 35 - Estado",
+    "POTASIO (K) - 27 - Estado",
+    "SILICIO (SI) - 36 - Estado",
+    "SODIO (NA) - 31 - Estado",
+    "TITANIO (TI) - 38 - Estado",
+    "VANADIO (V) - 39 - Estado",
+    "VISCOSIDAD A 100 °C - 13 - Estado",
+    "VISCOSIDAD A 40 °C - 14 - Estado",
+    "ZINC (ZN) - 40 - Estado"
 ]
 
 # ===================== Carga de archivos =====================
@@ -98,16 +142,23 @@ if files:
         if "ESTADO_REPORTE" in df_out.columns:
             rename_map["ESTADO_REPORTE"] = "ESTADO"
         if "CONTENIDO GLICOL - 105" in df_out.columns:
-            rename_map["ESTADO_MUESTRA"] = "CONTENIDO GLICOL  - 105"
+            rename_map["CONTENIDO GLICOL - 105"] = "CONTENIDO GLICOL - 105"
         if "ÍNDICE VISCOSIDAD - 359" in df_out.columns:
             rename_map["ÍNDICE VISCOSIDAD - 359"] = "**ÍNDICE VISCOSIDAD - 359"
         if rename_map:
             df_out = df_out.rename(columns=rename_map)
 
+        # === Añadir Archivo Origen ===
         df_out["Archivo_Origen"] = f.name
+
+        # === AGREGAR NUEVAS COLUMNAS ESTADO AL FINAL ===
+        for col in NUEVAS_ESTADO:
+            if col not in df_out.columns:
+                df_out[col] = ""
+
         dfs_filtrados.append(df_out)
 
-        # Columnas NO requeridas con datos válidos
+        # === Columnas NO requeridas con datos ===
         requeridos_set = set(REQUERIDOS)
         for idx, col in enumerate(cols):
             if col in requeridos_set:
@@ -150,8 +201,8 @@ if files:
 
     # ====== Consolidado final ======
     df_final = pd.concat(dfs_filtrados, ignore_index=True)
-    st.subheader("📋 Vista previa del archivo final (solo columnas requeridas + Archivo_Origen)")
-    st.dataframe(df_final.head(15), use_container_width=True)
+    st.subheader("📋 Vista previa del archivo final (solo columnas requeridas + Archivo_Origen + Estados)")
+    st.dataframe(df_final.head(20), use_container_width=True)
 
     # ====== Nombre del archivo dinámico ======
     cliente = str(df_final["NOMBRE_CLIENTE"].dropna().iloc[0]).strip().replace(" ", "_")
@@ -162,8 +213,7 @@ if files:
     ultima_letra = col_index_to_letter(len(df_final.columns) - 1)
 
     st.caption(
-        f"ℹ️ 'Archivo_Origen' quedó como última columna: **{ultima_letra}** "
-        f"(archivo sin tabla, hoja 'Sheet1')."
+        f"ℹ️ 'Archivo_Origen' + columnas Estado quedaron al final. Última columna en Excel: **{ultima_letra}**"
     )
 
     st.download_button(
