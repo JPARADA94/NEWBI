@@ -72,27 +72,91 @@ REQUERIDOS = [
 # ===================== ENCABEZADOS ESTADO (REQUERIDOS) =====================
 NUEVAS_ESTADO = [
     "ESTADO_MUESTRA",
-    "AGUA (IR) - 74","AGUA (IR) - 74 - Estado",
-    "AGUA CUALITATIVA (PLANCHA) - 360 - Estado","AGUA (IR) - 81 - Estado",
-    "ALUMINIO (AL) - 20 - Estado","BARIO (BA) - 21 - Estado","BORO (B) - 18 - Estado",
-    "CALCIO (CA) - 22 - Estado","COBRE (CU) - 25 - Estado","COBRE (CU) - 119 - Estado",
-    "CÓDIGO ISO (4/6/14) - 47 - Estado","CONTENIDO AGUA (KARL FISCHER) - 41 - Estado",
-    "CONTEO PARTÍCULAS >= 14 ΜM - 48 - Estado","CONTEO PARTÍCULAS >= 4 ΜM - 49 - Estado",
-    "CONTEO PARTÍCULAS >= 6 ΜM - 50 - Estado","CROMO (CR) - 24 - Estado",
-    "DILUCIÓN POR COMBUSTIBLE - 46 - Estado","ESTAÑO (SN) - 37 - Estado",
-    "FÓSFORO (P) - 34 - Estado","HOLLÍN - 73","HOLLÍN - 73 - Estado",
-    "HOLLÍN - 79 - Estado","HIERRO (FE) - 26 - Estado",
-    "ÍNDICE PQ (PQI) - 3 - Estado","MAGNESIO (MG) - 28 - Estado",
-    "MANGANESO (MN) - 29 - Estado","MOLIBDENO (MO) - 30 - Estado",
-    "NÍQUEL (NI) - 32 - Estado","NITRACIÓN - 82 - Estado",
-    "NÚMERO ÁCIDO (AN) - 43 - Estado","NÚMERO BÁSICO (BN) - 17 - Estado",
-    "NÚMERO BÁSICO (BN) - 12 - Estado","OXIDACIÓN - 80 - Estado",
-    "PLATA (AG) - 19 - Estado","PLOMO (PB) - 35 - Estado",
-    "POTASIO (K) - 27 - Estado","SILICIO (SI) - 36 - Estado",
-    "SODIO (NA) - 31 - Estado","TITANIO (TI) - 38 - Estado",
-    "VANADIO (V) - 39 - Estado","VISCOSIDAD A 40 °C - 14 - Estado",
-    "VISCOSIDAD A 100 °C - 13 - Estado","ZINC (ZN) - 40 - Estado"
+
+    # ----- AGUA -----
+    "AGUA (IR) - 74",
+    "AGUA (IR) - 74 - Estado",
+    "AGUA (IR) - 81 - Estado",
+    "AGUA LIBRE - 416 - Estado",
+    "AGUA CUALITATIVA (PLANCHA) - 360 - Estado",
+
+    # ----- METALES -----
+    "ALUMINIO (AL) - 20 - Estado",
+    "BARIO (BA) - 21 - Estado",
+    "BORO (B) - 18 - Estado",
+    "CALCIO (CA) - 22 - Estado",
+    "CADMIO (CD) - 23 - Estado",
+    "COBRE (CU) - 25 - Estado",
+    "COBRE (CU) - 119 - Estado",
+    "CROMO (CR) - 24 - Estado",
+    "HIERRO (FE) - 26 - Estado",
+    "MAGNESIO (MG) - 28 - Estado",
+    "MANGANESO (MN) - 29 - Estado",
+    "MOLIBDENO (MO) - 30 - Estado",
+    "NÍQUEL (NI) - 32 - Estado",
+    "PLATA (AG) - 19 - Estado",
+    "PLOMO (PB) - 35 - Estado",
+    "POTASIO (K) - 27 - Estado",
+    "SILICIO (SI) - 36 - Estado",
+    "SODIO (NA) - 31 - Estado",
+    "TITANIO (TI) - 38 - Estado",
+    "VANADIO (V) - 39 - Estado",
+    "ZINC (ZN) - 40 - Estado",
+
+    # ----- PARTÍCULAS / LIMPIEZA -----
+    "CÓDIGO ISO (4/6/14) - 47 - Estado",
+    "CONTEO PARTÍCULAS >= 4 ΜM - 49 - Estado",
+    "CONTEO PARTÍCULAS >= 6 ΜM - 50 - Estado",
+    "CONTEO PARTÍCULAS >= 14 ΜM - 48 - Estado",
+
+    # ----- OXIDACIÓN / NITRACIÓN / PQ -----
+    "OXIDACIÓN - 80 - Estado",
+    "NITRACIÓN - 82 - Estado",
+    "ÍNDICE PQ (PQI) - 3 - Estado",
+
+    # ----- QUÍMICA DEL ACEITE -----
+    "NÚMERO ÁCIDO (AN) - 43 - Estado",
+    "NÚMERO BÁSICO (BN) - 12 - Estado",
+    "NÚMERO BÁSICO (BN) - 17 - Estado",
+    "CONTENIDO AGUA (KARL FISCHER) - 41 - Estado",
+    "ANÁLISIS ANTIOXIDANTES (AMINA) - 44 - Estado",
+    "ANÁLISIS ANTIOXIDANTES (FENOL) - 45 - Estado",
+
+    # ----- HOLLÍN / COMBUSTIBLE -----
+    "HOLLÍN - 73",
+    "HOLLÍN - 73 - Estado",
+    "HOLLÍN - 79 - Estado",
+    "DILUCIÓN POR COMBUSTIBLE - 46 - Estado",
+
+    # ----- VISCOSIDAD -----
+    "VISCOSIDAD A 40 °C - 14 - Estado",
+    "VISCOSIDAD A 100 °C - 13 - Estado",
+    "ÍNDICE VISCOSIDAD - 359 - Estado",
+
+    # ----- ESPUMA -----
+    "ESPUMA SEC 1 - ESTABILIDAD - 60 - Estado",
+    "ESPUMA SEC 1 - TENDENCIA - 59 - Estado",
+
+    # ----- MPC / DEPÓSITOS -----
+    "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51 - Estado",
+    "RESIDUO CARBÓN (MCR) - 361",
+    "RESIDUO CARBÓN (MCR) - 361 - Estado",
+
+    # ----- SEGURIDAD / ENVEJECIMIENTO -----
+    "PUNTO DE INFLAMACIÓN (PMA) - 61",
+    "PUNTO DE INFLAMACIÓN (PMA) - 61 - Estado",
+    "RPVOT - 10 - Estado",
+
+    # ----- DEMULSIBILIDAD -----
+    "SEPARABILIDAD AGUA A 54 °C (ACEITE) - 6 - Estado",
+    "SEPARABILIDAD AGUA A 54 °C (AGUA) - 7 - Estado",
+    "SEPARABILIDAD AGUA A 54 °C (EMULSIÓN) - 8 - Estado",
+    "SEPARABILIDAD AGUA A 54 °C (TIEMPO) - 83 - Estado",
+
+    # ----- ESPECIALES -----
+    "**ULTRACENTRÍFUGA (UC) - 1 - Estado"
 ]
+
 
 COLUMNAS_USADAS = REQUERIDOS + NUEVAS_ESTADO
 
