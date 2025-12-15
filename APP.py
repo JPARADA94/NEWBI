@@ -4,10 +4,18 @@ from io import BytesIO
 from datetime import datetime
 
 # ===================== CONFIGURACIÓN =====================
-st.set_page_config(page_title="Validación estricta de encabezados", layout="wide")
-st.title("📄 Construcción de Excel – Todas las columnas requeridas (estricto)")
+st.set_page_config(page_title="Validación total de encabezados", layout="wide")
+st.title("📄 Validación estricta y auditoría de encabezados")
 
 # ===================== UTILIDADES =====================
+def col_index_to_letter(idx: int) -> str:
+    s = ""
+    i = int(idx)
+    while i >= 0:
+        s = chr(i % 26 + 65) + s
+        i = i // 26 - 1
+    return s
+
 def df_to_xlsx_bytes(df):
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as w:
@@ -25,7 +33,7 @@ def normalizar(col):
         .upper()
     )
 
-# ===================== COLUMNAS BASE (REQUERIDAS) =====================
+# ===================== LISTAS DE ENCABEZADOS =====================
 REQUERIDOS = [
     "NOMBRE_CLIENTE","NOMBRE_OPERACION","N_MUESTRA","CORRELATIVO","FECHA_MUESTREO","FECHA_INGRESO",
     "FECHA_RECEPCION","FECHA_INFORME","EDAD_COMPONENTE","UNIDAD_EDAD_COMPONENTE","EDAD_PRODUCTO",
@@ -61,7 +69,6 @@ REQUERIDOS = [
     "USUARIO","COMENTARIO_REPORTE","id_muestra"
 ]
 
-# ===================== COLUMNAS ESTADO (REQUERIDAS) =====================
 NUEVAS_ESTADO = [
     "ESTADO_MUESTRA",
     "AGUA CUALITATIVA (PLANCHA) - 360 - Estado",
@@ -88,37 +95,46 @@ if files:
 
     for f in files:
         df = pd.read_excel(f, dtype=str, engine="openpyxl")
+        cols = df.columns.tolist()
 
-        # Mapa normalizado → nombre real
-        cols_norm = {normalizar(c): c for c in df.columns}
+        # Mapa normalizado → real
+        cols_norm = {normalizar(c): c for c in cols}
 
-        # ================= VALIDACIÓN ESTRICTA =================
+        # ================= VALIDACIÓN =================
         faltantes = [
             col for col in TODAS_REQUERIDAS
             if normalizar(col) not in cols_norm
         ]
 
         if faltantes:
-            st.error(f"❌ Archivo {f.name} NO cumple con los encabezados requeridos")
-            st.dataframe(pd.DataFrame({"Columna faltante": faltantes}))
+            st.error(f"❌ Archivo {f.name} – FALTAN ENCABEZADOS")
+            st.dataframe(pd.DataFrame({"Encabezado faltante": faltantes}))
             st.stop()
 
-        # ================= CONSTRUCCIÓN ORDENADA =================
+        # ================= AUDITORÍA DE DATOS =================
+        auditoria = []
+        for idx, col in enumerate(cols):
+            serie = df[col].astype(str).str.strip()
+            serie = serie.replace({"": pd.NA, "nan": pd.NA})
+            auditoria.append({
+                "Encabezado": col,
+                "Registros con datos": serie.notna().sum(),
+                "Posición": col_index_to_letter(idx)
+            })
+
+        st.subheader(f"📊 Auditoría de datos – {f.name}")
+        st.dataframe(pd.DataFrame(auditoria), use_container_width=True)
+
+        # ================= CONSTRUCCIÓN FINAL =================
         df_out = pd.DataFrame()
 
-        # BASE
         for col in REQUERIDOS:
             real = cols_norm[normalizar(col)]
             df_out[col] = df[real]
 
-        # Renombre puntual
-        if "ESTADO_REPORTE" in df_out.columns:
-            df_out.rename(columns={"ESTADO_REPORTE": "ESTADO"}, inplace=True)
-
-        # Archivo origen
+        df_out.rename(columns={"ESTADO_REPORTE": "ESTADO"}, inplace=True)
         df_out["Archivo_Origen"] = f.name
 
-        # ESTADOS
         for col in NUEVAS_ESTADO:
             real = cols_norm[normalizar(col)]
             df_out[col] = df[real]
@@ -127,7 +143,7 @@ if files:
 
     df_final = pd.concat(dfs, ignore_index=True)
 
-    st.success("✅ Archivo generado correctamente (validación estricta)")
+    st.success("✅ Proceso completado correctamente")
     st.dataframe(df_final.head(20), use_container_width=True)
 
     nombre = f"resultado_{datetime.now().strftime('%Y%m%d')}.xlsx"
