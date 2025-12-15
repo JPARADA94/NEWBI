@@ -102,6 +102,8 @@ NUEVAS_ESTADO = [
     "TITANIO (TI) - 38 - Estado",
     "VANADIO (V) - 39 - Estado",
     "ZINC (ZN) - 40 - Estado",
+    "ESTAÑO (SN) - 37 - Estado", 
+    "FÓSFORO (P) - 34 - Estado", 
 
     # ----- PARTÍCULAS / LIMPIEZA -----
     "CÓDIGO ISO (4/6/14) - 47 - Estado",
