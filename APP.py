@@ -141,4 +141,15 @@ if files:
 
     df_final = pd.concat(dfs_out, ignore_index=True)
 
-    st.su
+    st.success("✅ Proceso completado correctamente")
+    st.subheader("📋 Vista previa")
+    st.dataframe(df_final.head(20), use_container_width=True)
+
+    nombre = f"resultado_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    st.download_button(
+        "📥 Descargar archivo final",
+        df_to_xlsx_bytes(df_final),
+        file_name=nombre,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
