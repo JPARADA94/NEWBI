@@ -3,9 +3,9 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime
 
-# ===================== CONFIGURACIÓN =====================
-st.set_page_config(page_title="Validación total de encabezados", layout="wide")
-st.title("📄 Validación estricta y auditoría de encabezados")
+# ===================== CONFIG =====================
+st.set_page_config(page_title="Control total de columnas", layout="wide")
+st.title("📄 Validación y control de columnas usadas vs ignoradas")
 
 # ===================== UTILIDADES =====================
 def col_index_to_letter(idx: int) -> str:
@@ -33,57 +33,13 @@ def normalizar(col):
         .upper()
     )
 
-# ===================== LISTAS DE ENCABEZADOS =====================
-REQUERIDOS = [
-    "NOMBRE_CLIENTE","NOMBRE_OPERACION","N_MUESTRA","CORRELATIVO","FECHA_MUESTREO","FECHA_INGRESO",
-    "FECHA_RECEPCION","FECHA_INFORME","EDAD_COMPONENTE","UNIDAD_EDAD_COMPONENTE","EDAD_PRODUCTO",
-    "UNIDAD_EDAD_PRODUCTO","CANTIDAD_ADICIONADA","UNIDAD_CANTIDAD_ADICIONADA","PRODUCTO","TIPO_PRODUCTO",
-    "EQUIPO","TIPO_EQUIPO","MARCA_EQUIPO","MODELO_EQUIPO","COMPONENTE","MARCA_COMPONENTE","MODELO_COMPONENTE",
-    "DESCRIPTOR_COMPONENTE","ESTADO_REPORTE","NIVEL_DE_SERVICIO",
-    "ÍNDICE PQ (PQI) - 3","PLATA (AG) - 19","ALUMINIO (AL) - 20","CROMO (CR) - 24",
-    "COBRE (CU) - 25","HIERRO (FE) - 26","TITANIO (TI) - 38","PLOMO (PB) - 35",
-    "NÍQUEL (NI) - 32","MOLIBDENO (MO) - 30","SILICIO (SI) - 36","SODIO (NA) - 31",
-    "POTASIO (K) - 27","VANADIO (V) - 39","BORO (B) - 18","BARIO (BA) - 21",
-    "CALCIO (CA) - 22","CADMIO (CD) - 23","MAGNESIO (MG) - 28","MANGANESO (MN) - 29",
-    "FÓSFORO (P) - 34","ZINC (ZN) - 40","CÓDIGO ISO (4/6/14) - 47",
-    "CONTEO PARTÍCULAS >= 4 ΜM - 49","CONTEO PARTÍCULAS >= 6 ΜM - 50",
-    "CONTEO PARTÍCULAS >= 14 ΜM - 48","OXIDACIÓN - 80","NITRACIÓN - 82",
-    "NÚMERO ÁCIDO (AN) - 43","NÚMERO BÁSICO (BN) - 12","NÚMERO BÁSICO (BN) - 17",
-    "HOLLÍN - 79","DILUCIÓN POR COMBUSTIBLE - 46","AGUA (IR) - 81",
-    "CONTENIDO AGUA (KARL FISCHER) - 41","CONTENIDO GLICOL - 105",
-    "VISCOSIDAD A 100 °C - 13","VISCOSIDAD A 40 °C - 14",
-    "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51","AGUA CUALITATIVA (PLANCHA) - 360",
-    "AGUA LIBRE - 416","ANÁLISIS ANTIOXIDANTES (AMINA) - 44",
-    "ANÁLISIS ANTIOXIDANTES (FENOL) - 45","COBRE (CU) - 119",
-    "ESPUMA SEC 1 - ESTABILIDAD - 60","ESPUMA SEC 1 - TENDENCIA - 59",
-    "ESTAÑO (SN) - 37","ÍNDICE VISCOSIDAD - 359","RPVOT - 10",
-    "SEPARABILIDAD AGUA A 54 °C (ACEITE) - 6",
-    "SEPARABILIDAD AGUA A 54 °C (AGUA) - 7",
-    "SEPARABILIDAD AGUA A 54 °C (EMULSIÓN) - 8",
-    "SEPARABILIDAD AGUA A 54 °C (TIEMPO) - 83",
-    "**ULTRACENTRÍFUGA (UC) - 1",
-    "ESTADO_PRODUCTO","ESTADO_DESGASTE","ESTADO_CONTAMINACION",
-    "N_SOLICITUD","CAMBIO_DE_PRODUCTO","CAMBIO_DE_FILTRO",
-    "TEMPERATURA_RESERVORIO","UNIDAD_TEMPERATURA_RESERVORIO",
-    "COMENTARIO_CLIENTE","TIPO_DE_COMBUSTIBLE","TIPO_DE_REFRIGERANTE",
-    "USUARIO","COMENTARIO_REPORTE","id_muestra"
-]
+# ===================== ENCABEZADOS =====================
+REQUERIDOS = [ ... ]          # <-- TU LISTA COMPLETA (sin cambios)
+NUEVAS_ESTADO = [ ... ]       # <-- TU LISTA COMPLETA (sin cambios)
 
-NUEVAS_ESTADO = [
-    "ESTADO_MUESTRA",
-    "AGUA CUALITATIVA (PLANCHA) - 360 - Estado",
-    "AGUA (IR) - 81 - Estado",
-    "ALUMINIO (AL) - 20 - Estado",
-    "HIERRO (FE) - 26 - Estado",
-    "OXIDACIÓN - 80 - Estado",
-    "NITRACIÓN - 82 - Estado",
-    "VISCOSIDAD A 40 °C - 14 - Estado",
-    "VISCOSIDAD A 100 °C - 13 - Estado"
-]
+COLUMNAS_USADAS = REQUERIDOS + NUEVAS_ESTADO
 
-TODAS_REQUERIDAS = REQUERIDOS + NUEVAS_ESTADO
-
-# ===================== CARGA DE ARCHIVOS =====================
+# ===================== CARGA =====================
 files = st.file_uploader(
     "📤 Sube uno o varios Excel (.xlsx)",
     type="xlsx",
@@ -97,13 +53,12 @@ if files:
         df = pd.read_excel(f, dtype=str, engine="openpyxl")
         cols = df.columns.tolist()
 
-        # Mapa normalizado → real
         cols_norm = {normalizar(c): c for c in cols}
 
-        # ================= VALIDACIÓN =================
+        # ========= VALIDACIÓN =========
         faltantes = [
-            col for col in TODAS_REQUERIDAS
-            if normalizar(col) not in cols_norm
+            c for c in COLUMNAS_USADAS
+            if normalizar(c) not in cols_norm
         ]
 
         if faltantes:
@@ -111,39 +66,45 @@ if files:
             st.dataframe(pd.DataFrame({"Encabezado faltante": faltantes}))
             st.stop()
 
-        # ================= AUDITORÍA DE DATOS =================
-        auditoria = []
+        # ========= DETECCIÓN DE DATOS NO USADOS =========
+        columnas_usadas_norm = {normalizar(c) for c in COLUMNAS_USADAS}
+        extras_con_datos = []
+
         for idx, col in enumerate(cols):
+            if normalizar(col) in columnas_usadas_norm:
+                continue
+
             serie = df[col].astype(str).str.strip()
             serie = serie.replace({"": pd.NA, "nan": pd.NA})
-            auditoria.append({
-                "Encabezado": col,
-                "Registros con datos": serie.notna().sum(),
-                "Posición": col_index_to_letter(idx)
-            })
 
-        st.subheader(f"📊 Auditoría de datos – {f.name}")
-        st.dataframe(pd.DataFrame(auditoria), use_container_width=True)
+            if serie.notna().sum() > 0:
+                extras_con_datos.append({
+                    "Encabezado NO usado": col,
+                    "Registros con datos": serie.notna().sum(),
+                    "Posición original": col_index_to_letter(idx)
+                })
 
-        # ================= CONSTRUCCIÓN FINAL =================
+        if extras_con_datos:
+            st.warning(f"⚠️ {f.name} contiene columnas con datos que NO se usan")
+            st.dataframe(pd.DataFrame(extras_con_datos), use_container_width=True)
+
+        # ========= CONSTRUCCIÓN FINAL =========
         df_out = pd.DataFrame()
 
         for col in REQUERIDOS:
-            real = cols_norm[normalizar(col)]
-            df_out[col] = df[real]
+            df_out[col] = df[cols_norm[normalizar(col)]]
 
         df_out.rename(columns={"ESTADO_REPORTE": "ESTADO"}, inplace=True)
         df_out["Archivo_Origen"] = f.name
 
         for col in NUEVAS_ESTADO:
-            real = cols_norm[normalizar(col)]
-            df_out[col] = df[real]
+            df_out[col] = df[cols_norm[normalizar(col)]]
 
         dfs.append(df_out)
 
     df_final = pd.concat(dfs, ignore_index=True)
 
-    st.success("✅ Proceso completado correctamente")
+    st.success("✅ Proceso finalizado correctamente")
     st.dataframe(df_final.head(20), use_container_width=True)
 
     nombre = f"resultado_{datetime.now().strftime('%Y%m%d')}.xlsx"
@@ -153,5 +114,4 @@ if files:
         file_name=nombre,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
 
