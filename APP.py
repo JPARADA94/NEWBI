@@ -3,35 +3,29 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime
 
-# ===================== Configuración =====================
-st.set_page_config(page_title="Filtrar por Encabezados EXACTOS", layout="wide")
-st.title("📄 Construir Excel solo con encabezados requeridos (EXACTOS) + Archivo_Origen")
+# ===================== CONFIGURACIÓN =====================
+st.set_page_config(page_title="Validación estricta de encabezados", layout="wide")
+st.title("📄 Construcción de Excel – Todas las columnas requeridas (estricto)")
 
-# ===================== Utilitarios =====================
-def col_index_to_letter(idx: int) -> str:
-    s = ""
-    i = int(idx)
-    while i >= 0:
-        s = chr(i % 26 + 65) + s
-        i = i // 26 - 1
-    return s
-
-def df_to_xlsx_bytes(df: pd.DataFrame, sheet: str = "Sheet1") -> BytesIO:
+# ===================== UTILIDADES =====================
+def df_to_xlsx_bytes(df):
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as w:
-        df.to_excel(w, index=False, sheet_name=sheet)
+        df.to_excel(w, index=False, sheet_name="Sheet1")
     buf.seek(0)
     return buf
 
-# ===================== Verificación de columnas =====================
-def verificar_columnas_faltantes(cols_archivo, cols_requeridos):
-    faltantes = [c for c in cols_requeridos if c not in cols_archivo]
-    if faltantes:
-        st.error("❌ Este archivo NO cumple con los encabezados requeridos.")
-        st.dataframe(pd.DataFrame({"Columnas faltantes": faltantes}), use_container_width=True)
-    return faltantes
+def normalizar(col):
+    return (
+        str(col)
+        .strip()
+        .replace("–", "-")
+        .replace("μ", "Μ")
+        .replace("  ", " ")
+        .upper()
+    )
 
-# ===================== ENCABEZADOS REQUERIDOS =====================
+# ===================== COLUMNAS BASE (REQUERIDAS) =====================
 REQUERIDOS = [
     "NOMBRE_CLIENTE","NOMBRE_OPERACION","N_MUESTRA","CORRELATIVO","FECHA_MUESTREO","FECHA_INGRESO",
     "FECHA_RECEPCION","FECHA_INFORME","EDAD_COMPONENTE","UNIDAD_EDAD_COMPONENTE","EDAD_PRODUCTO",
@@ -67,17 +61,27 @@ REQUERIDOS = [
     "USUARIO","COMENTARIO_REPORTE","id_muestra"
 ]
 
-# ===================== COLUMNAS ESTADO =====================
+# ===================== COLUMNAS ESTADO (REQUERIDAS) =====================
 NUEVAS_ESTADO = [
-    "ESTADO_MUESTRA","AGUA CUALITATIVA (PLANCHA) - 360 - Estado",
-    "AGUA (IR) - 81 - Estado","ALUMINIO (AL) - 20 - Estado",
-    "HIERRO (FE) - 26 - Estado","OXIDACIÓN - 80 - Estado",
-    "NITRACIÓN - 82 - Estado","VISCOSIDAD A 40 °C - 14 - Estado",
+    "ESTADO_MUESTRA",
+    "AGUA CUALITATIVA (PLANCHA) - 360 - Estado",
+    "AGUA (IR) - 81 - Estado",
+    "ALUMINIO (AL) - 20 - Estado",
+    "HIERRO (FE) - 26 - Estado",
+    "OXIDACIÓN - 80 - Estado",
+    "NITRACIÓN - 82 - Estado",
+    "VISCOSIDAD A 40 °C - 14 - Estado",
     "VISCOSIDAD A 100 °C - 13 - Estado"
 ]
 
-# ===================== CARGA =====================
-files = st.file_uploader("📤 Sube uno o varios Excel (.xlsx)", type="xlsx", accept_multiple_files=True)
+TODAS_REQUERIDAS = REQUERIDOS + NUEVAS_ESTADO
+
+# ===================== CARGA DE ARCHIVOS =====================
+files = st.file_uploader(
+    "📤 Sube uno o varios Excel (.xlsx)",
+    type="xlsx",
+    accept_multiple_files=True
+)
 
 if files:
     dfs = []
@@ -85,40 +89,53 @@ if files:
     for f in files:
         df = pd.read_excel(f, dtype=str, engine="openpyxl")
 
-        if verificar_columnas_faltantes(df.columns.tolist(), REQUERIDOS):
+        # Mapa normalizado → nombre real
+        cols_norm = {normalizar(c): c for c in df.columns}
+
+        # ================= VALIDACIÓN ESTRICTA =================
+        faltantes = [
+            col for col in TODAS_REQUERIDAS
+            if normalizar(col) not in cols_norm
+        ]
+
+        if faltantes:
+            st.error(f"❌ Archivo {f.name} NO cumple con los encabezados requeridos")
+            st.dataframe(pd.DataFrame({"Columna faltante": faltantes}))
             st.stop()
 
-        df_out = df[REQUERIDOS].copy()
+        # ================= CONSTRUCCIÓN ORDENADA =================
+        df_out = pd.DataFrame()
 
-        # Renombre
+        # BASE
+        for col in REQUERIDOS:
+            real = cols_norm[normalizar(col)]
+            df_out[col] = df[real]
+
+        # Renombre puntual
         if "ESTADO_REPORTE" in df_out.columns:
             df_out.rename(columns={"ESTADO_REPORTE": "ESTADO"}, inplace=True)
 
         # Archivo origen
         df_out["Archivo_Origen"] = f.name
 
-        # 👉 COPIAR ESTADOS SI EXISTEN
+        # ESTADOS
         for col in NUEVAS_ESTADO:
-            if col in df.columns:
-                df_out[col] = df[col]
-            else:
-                df_out[col] = ""
+            real = cols_norm[normalizar(col)]
+            df_out[col] = df[real]
 
         dfs.append(df_out)
 
     df_final = pd.concat(dfs, ignore_index=True)
 
-    st.success("✅ Archivo generado correctamente")
+    st.success("✅ Archivo generado correctamente (validación estricta)")
     st.dataframe(df_final.head(20), use_container_width=True)
 
-    cliente = df_final["NOMBRE_CLIENTE"].dropna().iloc[0].replace(" ", "_")
-    fecha = datetime.now().strftime("%Y%m%d")
-    nombre = f"{cliente}_{fecha}.xlsx"
-
+    nombre = f"resultado_{datetime.now().strftime('%Y%m%d')}.xlsx"
     st.download_button(
         "📥 Descargar archivo final",
         df_to_xlsx_bytes(df_final),
         file_name=nombre,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
