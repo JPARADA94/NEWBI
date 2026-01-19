@@ -33,7 +33,9 @@ def normalizar(col: str) -> str:
         .upper()
     )
 
-# ===================== ENCABEZADOS BASE (REQUERIDOS) =====================
+# ===================== ENCABEZADOS BASE (SALIDA / ESQUEMA) =====================
+# OJO: Aquí mantenemos el nombre "antiguo" (sin **), porque es lo que quieres
+# en el archivo de salida para no romper Power BI.
 REQUERIDOS = [
     "NOMBRE_CLIENTE","NOMBRE_OPERACION","N_MUESTRA","CORRELATIVO","FECHA_MUESTREO","FECHA_INGRESO",
     "FECHA_RECEPCION","FECHA_INFORME","EDAD_COMPONENTE","UNIDAD_EDAD_COMPONENTE","EDAD_PRODUCTO",
@@ -52,7 +54,11 @@ REQUERIDOS = [
     "HOLLÍN - 79","DILUCIÓN POR COMBUSTIBLE - 46","AGUA (IR) - 81",
     "CONTENIDO AGUA (KARL FISCHER) - 41","CONTENIDO GLICOL - 105",
     "VISCOSIDAD A 100 °C - 13","VISCOSIDAD A 40 °C - 14",
-    "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51","AGUA CUALITATIVA (PLANCHA) - 360",
+
+    # ===== MPC (SALIDA: NOMBRE ANTIGUO) =====
+    "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51",
+
+    "AGUA CUALITATIVA (PLANCHA) - 360",
     "AGUA LIBRE - 416","ANÁLISIS ANTIOXIDANTES (AMINA) - 44",
     "ANÁLISIS ANTIOXIDANTES (FENOL) - 45","COBRE (CU) - 119",
     "ESPUMA SEC 1 - ESTABILIDAD - 60","ESPUMA SEC 1 - TENDENCIA - 59",
@@ -69,7 +75,7 @@ REQUERIDOS = [
     "USUARIO","COMENTARIO_REPORTE","id_muestra"
 ]
 
-# ===================== ENCABEZADOS ESTADO (REQUERIDOS) =====================
+# ===================== ENCABEZADOS ESTADO (SALIDA / ESQUEMA) =====================
 NUEVAS_ESTADO = [
     "ESTADO_MUESTRA",
 
@@ -102,8 +108,8 @@ NUEVAS_ESTADO = [
     "TITANIO (TI) - 38 - Estado",
     "VANADIO (V) - 39 - Estado",
     "ZINC (ZN) - 40 - Estado",
-    "ESTAÑO (SN) - 37 - Estado", 
-    "FÓSFORO (P) - 34 - Estado", 
+    "ESTAÑO (SN) - 37 - Estado",
+    "FÓSFORO (P) - 34 - Estado",
 
     # ----- PARTÍCULAS / LIMPIEZA -----
     "CÓDIGO ISO (4/6/14) - 47 - Estado",
@@ -140,7 +146,9 @@ NUEVAS_ESTADO = [
     "ESPUMA SEC 1 - TENDENCIA - 59 - Estado",
 
     # ----- MPC / DEPÓSITOS -----
+    # ===== MPC (SALIDA: NOMBRE ANTIGUO) =====
     "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51 - Estado",
+
     "RESIDUO CARBÓN (MCR) - 361",
     "RESIDUO CARBÓN (MCR) - 361 - Estado",
 
@@ -159,7 +167,35 @@ NUEVAS_ESTADO = [
     "**ULTRACENTRÍFUGA (UC) - 1 - Estado"
 ]
 
+# ===================== ALIAS DE ENTRADA (NUEVOS NOMBRES) -> SALIDA (NOMBRES ANTIGUOS) =====================
+# Aquí definimos que, si en el archivo origen vienen con "** " al inicio, igual los aceptamos,
+# pero en salida SIEMPRE se escribirán con el nombre antiguo (sin **).
+ALIASES_ENTRADA = {
+    "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51": [
+        "** COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51"
+    ],
+    "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51 - Estado": [
+        "** COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51 - Estado"
+    ],
+}
 
+# ===================== FUNCIONES PARA MAPEAR ENCABEZADOS =====================
+def posibles_entradas(nombre_salida: str) -> list[str]:
+    """Devuelve las variantes aceptadas en el Excel de origen para un nombre de salida."""
+    return [nombre_salida] + ALIASES_ENTRADA.get(nombre_salida, [])
+
+def encontrar_columna_origen(cols_norm_map: dict, nombre_salida: str) -> str | None:
+    """
+    Busca en el Excel de origen una columna que corresponda al nombre_salida (ya sea el mismo
+    o alguno de sus alias). Retorna el nombre real de la columna en el df de entrada.
+    """
+    for candidato in posibles_entradas(nombre_salida):
+        key = normalizar(candidato)
+        if key in cols_norm_map:
+            return cols_norm_map[key]
+    return None
+
+# ===================== COLUMNAS USADAS (ESQUEMA DE SALIDA) =====================
 COLUMNAS_USADAS = REQUERIDOS + NUEVAS_ESTADO
 
 # ===================== CARGA DE ARCHIVOS =====================
@@ -174,16 +210,26 @@ if files:
         cols_norm = {normalizar(c): c for c in cols}
 
         # -------- VALIDACIÓN DE ENCABEZADOS --------
-        faltantes = [c for c in COLUMNAS_USADAS if normalizar(c) not in cols_norm]
+        faltantes = []
+        for col_salida in COLUMNAS_USADAS:
+            col_origen = encontrar_columna_origen(cols_norm, col_salida)
+            if col_origen is None:
+                faltantes.append(col_salida)
+
         if faltantes:
             st.error(f"❌ {f.name} – Faltan encabezados requeridos")
-            st.dataframe(pd.DataFrame({"Encabezado faltante": faltantes}), use_container_width=True)
+            st.dataframe(pd.DataFrame({"Encabezado faltante (esperado en salida)": faltantes}),
+                         use_container_width=True)
             st.stop()
 
         # -------- DETECCIÓN DE COLUMNAS CON DATOS NO USADAS --------
-        usadas_norm = {normalizar(c) for c in COLUMNAS_USADAS}
-        extras = []
+        # Considera como "usadas" tanto las columnas del esquema de salida como sus alias en entrada.
+        usadas_norm = set()
+        for c in COLUMNAS_USADAS:
+            for cand in posibles_entradas(c):
+                usadas_norm.add(normalizar(cand))
 
+        extras = []
         for idx, c in enumerate(cols):
             if normalizar(c) in usadas_norm:
                 continue
@@ -203,14 +249,21 @@ if files:
 
         # -------- CONSTRUCCIÓN DEL EXCEL FINAL --------
         df_out = pd.DataFrame()
-        for c in REQUERIDOS:
-            df_out[c] = df[cols_norm[normalizar(c)]]
 
+        # REQUERIDOS (salida con nombres antiguos)
+        for col_salida in REQUERIDOS:
+            col_origen = encontrar_columna_origen(cols_norm, col_salida)
+            df_out[col_salida] = df[col_origen]
+
+        # Renombre interno para tu modelo (salida)
         df_out.rename(columns={"ESTADO_REPORTE": "ESTADO"}, inplace=True)
+
         df_out["Archivo_Origen"] = f.name
 
-        for c in NUEVAS_ESTADO:
-            df_out[c] = df[cols_norm[normalizar(c)]]
+        # NUEVAS_ESTADO (salida con nombres antiguos)
+        for col_salida in NUEVAS_ESTADO:
+            col_origen = encontrar_columna_origen(cols_norm, col_salida)
+            df_out[col_salida] = df[col_origen]
 
         dfs_out.append(df_out)
 
