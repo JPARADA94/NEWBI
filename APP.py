@@ -2,10 +2,21 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 from datetime import datetime
+import re
 
 # ===================== CONFIGURACIÓN =====================
-st.set_page_config(page_title="Control total de columnas", layout="wide")
-st.title("📄 Validación estricta de encabezados y control de datos no usados")
+st.set_page_config(page_title="SmartAssistence a Power BI", layout="wide")
+st.title("📄 Convertidor de formato SmartAssistence a Power BI")
+
+st.info(
+    "Instrucciones importantes:\n\n"
+    "1. Sube el archivo Excel original exportado desde SmartAssistence.\n"
+    "2. Descarga el archivo generado por esta herramienta.\n"
+    "3. El archivo descargado NO debe ser modificado.\n"
+    "4. No cambies el nombre del archivo generado.\n"
+    "5. No edites columnas, encabezados, hojas, datos ni formato interno.\n"
+    "6. Sube el archivo descargado tal cual a la base de datos para evitar errores en Power BI."
+)
 
 # ===================== UTILIDADES =====================
 def col_index_to_letter(idx: int) -> str:
@@ -33,9 +44,23 @@ def normalizar(col: str) -> str:
         .upper()
     )
 
+def limpiar_nombre_archivo(texto: str) -> str:
+    texto = str(texto).strip()
+    texto = re.sub(r"[\\/*?:\"<>|]", "", texto)
+    texto = re.sub(r"\s+", "_", texto)
+    texto = re.sub(r"_+", "_", texto)
+    return texto[:80] if texto else "CUENTA_SIN_NOMBRE"
+
+def obtener_nombre_cuenta(df: pd.DataFrame) -> str:
+    for col in ["NOMBRE_CLIENTE", "NOMBRE_OPERACION"]:
+        if col in df.columns:
+            serie = df[col].dropna().astype(str).str.strip()
+            serie = serie[serie != ""]
+            if not serie.empty:
+                return limpiar_nombre_archivo(serie.iloc[0])
+    return "CUENTA_SIN_NOMBRE"
+
 # ===================== ENCABEZADOS BASE (SALIDA / ESQUEMA) =====================
-# OJO: Aquí mantenemos el nombre "antiguo" (sin **), porque es lo que quieres
-# en el archivo de salida para no romper Power BI.
 REQUERIDOS = [
     "NOMBRE_CLIENTE","NOMBRE_OPERACION","N_MUESTRA","CORRELATIVO","FECHA_MUESTREO","FECHA_INGRESO",
     "FECHA_RECEPCION","FECHA_INFORME","EDAD_COMPONENTE","UNIDAD_EDAD_COMPONENTE","EDAD_PRODUCTO",
@@ -54,10 +79,7 @@ REQUERIDOS = [
     "HOLLÍN - 79","DILUCIÓN POR COMBUSTIBLE - 46","AGUA (IR) - 81",
     "CONTENIDO AGUA (KARL FISCHER) - 41","CONTENIDO GLICOL - 105",
     "VISCOSIDAD A 100 °C - 13","VISCOSIDAD A 40 °C - 14",
-
-    # ===== MPC (SALIDA: NOMBRE ANTIGUO) =====
     "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51",
-
     "AGUA CUALITATIVA (PLANCHA) - 360",
     "AGUA LIBRE - 416","ANÁLISIS ANTIOXIDANTES (AMINA) - 44",
     "ANÁLISIS ANTIOXIDANTES (FENOL) - 45","COBRE (CU) - 119",
@@ -78,15 +100,11 @@ REQUERIDOS = [
 # ===================== ENCABEZADOS ESTADO (SALIDA / ESQUEMA) =====================
 NUEVAS_ESTADO = [
     "ESTADO_MUESTRA",
-
-    # ----- AGUA -----
     "AGUA (IR) - 74",
     "AGUA (IR) - 74 - Estado",
     "AGUA (IR) - 81 - Estado",
     "AGUA LIBRE - 416 - Estado",
     "AGUA CUALITATIVA (PLANCHA) - 360 - Estado",
-
-    # ----- METALES -----
     "ALUMINIO (AL) - 20 - Estado",
     "BARIO (BA) - 21 - Estado",
     "BORO (B) - 18 - Estado",
@@ -110,66 +128,42 @@ NUEVAS_ESTADO = [
     "ZINC (ZN) - 40 - Estado",
     "ESTAÑO (SN) - 37 - Estado",
     "FÓSFORO (P) - 34 - Estado",
-
-    # ----- PARTÍCULAS / LIMPIEZA -----
     "CÓDIGO ISO (4/6/14) - 47 - Estado",
     "CONTEO PARTÍCULAS >= 4 ΜM - 49 - Estado",
     "CONTEO PARTÍCULAS >= 6 ΜM - 50 - Estado",
     "CONTEO PARTÍCULAS >= 14 ΜM - 48 - Estado",
-
-    # ----- OXIDACIÓN / NITRACIÓN / PQ -----
     "OXIDACIÓN - 80 - Estado",
     "NITRACIÓN - 82 - Estado",
     "ÍNDICE PQ (PQI) - 3 - Estado",
-
-    # ----- QUÍMICA DEL ACEITE -----
     "NÚMERO ÁCIDO (AN) - 43 - Estado",
     "NÚMERO BÁSICO (BN) - 12 - Estado",
     "NÚMERO BÁSICO (BN) - 17 - Estado",
     "CONTENIDO AGUA (KARL FISCHER) - 41 - Estado",
     "ANÁLISIS ANTIOXIDANTES (AMINA) - 44 - Estado",
     "ANÁLISIS ANTIOXIDANTES (FENOL) - 45 - Estado",
-
-    # ----- HOLLÍN / COMBUSTIBLE -----
     "HOLLÍN - 73",
     "HOLLÍN - 73 - Estado",
     "HOLLÍN - 79 - Estado",
     "DILUCIÓN POR COMBUSTIBLE - 46 - Estado",
-
-    # ----- VISCOSIDAD -----
     "VISCOSIDAD A 40 °C - 14 - Estado",
     "VISCOSIDAD A 100 °C - 13 - Estado",
     "ÍNDICE VISCOSIDAD - 359 - Estado",
-
-    # ----- ESPUMA -----
     "ESPUMA SEC 1 - ESTABILIDAD - 60 - Estado",
     "ESPUMA SEC 1 - TENDENCIA - 59 - Estado",
-
-    # ----- MPC / DEPÓSITOS -----
-    # ===== MPC (SALIDA: NOMBRE ANTIGUO) =====
     "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51 - Estado",
-
     "RESIDUO CARBÓN (MCR) - 361",
     "RESIDUO CARBÓN (MCR) - 361 - Estado",
-
-    # ----- SEGURIDAD / ENVEJECIMIENTO -----
     "PUNTO DE INFLAMACIÓN (PMA) - 61",
     "PUNTO DE INFLAMACIÓN (PMA) - 61 - Estado",
     "RPVOT - 10 - Estado",
-
-    # ----- DEMULSIBILIDAD -----
     "SEPARABILIDAD AGUA A 54 °C (ACEITE) - 6 - Estado",
     "SEPARABILIDAD AGUA A 54 °C (AGUA) - 7 - Estado",
     "SEPARABILIDAD AGUA A 54 °C (EMULSIÓN) - 8 - Estado",
     "SEPARABILIDAD AGUA A 54 °C (TIEMPO) - 83 - Estado",
-
-    # ----- ESPECIALES -----
     "**ULTRACENTRÍFUGA (UC) - 1 - Estado"
 ]
 
-# ===================== ALIAS DE ENTRADA (NUEVOS NOMBRES) -> SALIDA (NOMBRES ANTIGUOS) =====================
-# Aquí definimos que, si en el archivo origen vienen con "** " al inicio, igual los aceptamos,
-# pero en salida SIEMPRE se escribirán con el nombre antiguo (sin **).
+# ===================== ALIAS DE ENTRADA =====================
 ALIASES_ENTRADA = {
     "COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51": [
         "** COLORIMETRÍA MEMBRANA DE PARCHE (MPC) - 51"
@@ -181,25 +175,20 @@ ALIASES_ENTRADA = {
 
 # ===================== FUNCIONES PARA MAPEAR ENCABEZADOS =====================
 def posibles_entradas(nombre_salida: str) -> list[str]:
-    """Devuelve las variantes aceptadas en el Excel de origen para un nombre de salida."""
     return [nombre_salida] + ALIASES_ENTRADA.get(nombre_salida, [])
 
 def encontrar_columna_origen(cols_norm_map: dict, nombre_salida: str) -> str | None:
-    """
-    Busca en el Excel de origen una columna que corresponda al nombre_salida (ya sea el mismo
-    o alguno de sus alias). Retorna el nombre real de la columna en el df de entrada.
-    """
     for candidato in posibles_entradas(nombre_salida):
         key = normalizar(candidato)
         if key in cols_norm_map:
             return cols_norm_map[key]
     return None
 
-# ===================== COLUMNAS USADAS (ESQUEMA DE SALIDA) =====================
+# ===================== COLUMNAS USADAS =====================
 COLUMNAS_USADAS = REQUERIDOS + NUEVAS_ESTADO
 
 # ===================== CARGA DE ARCHIVOS =====================
-files = st.file_uploader("📤 Sube uno o varios Excel (.xlsx)", type="xlsx", accept_multiple_files=True)
+files = st.file_uploader("📤 Sube uno o varios Excel exportados desde SmartAssistence (.xlsx)", type="xlsx", accept_multiple_files=True)
 
 if files:
     dfs_out = []
@@ -218,12 +207,10 @@ if files:
 
         if faltantes:
             st.error(f"❌ {f.name} – Faltan encabezados requeridos")
-            st.dataframe(pd.DataFrame({"Encabezado faltante (esperado en salida)": faltantes}),
-                         use_container_width=True)
+            st.dataframe(pd.DataFrame({"Encabezado faltante esperado en salida": faltantes}), use_container_width=True)
             st.stop()
 
         # -------- DETECCIÓN DE COLUMNAS CON DATOS NO USADAS --------
-        # Considera como "usadas" tanto las columnas del esquema de salida como sus alias en entrada.
         usadas_norm = set()
         for c in COLUMNAS_USADAS:
             for cand in posibles_entradas(c):
@@ -250,17 +237,13 @@ if files:
         # -------- CONSTRUCCIÓN DEL EXCEL FINAL --------
         df_out = pd.DataFrame()
 
-        # REQUERIDOS (salida con nombres antiguos)
         for col_salida in REQUERIDOS:
             col_origen = encontrar_columna_origen(cols_norm, col_salida)
             df_out[col_salida] = df[col_origen]
 
-        # Renombre interno para tu modelo (salida)
         df_out.rename(columns={"ESTADO_REPORTE": "ESTADO"}, inplace=True)
-
         df_out["Archivo_Origen"] = f.name
 
-        # NUEVAS_ESTADO (salida con nombres antiguos)
         for col_salida in NUEVAS_ESTADO:
             col_origen = encontrar_columna_origen(cols_norm, col_salida)
             df_out[col_salida] = df[col_origen]
@@ -269,14 +252,22 @@ if files:
 
     df_final = pd.concat(dfs_out, ignore_index=True)
 
-    st.success("✅ Proceso completado correctamente")
+    st.success("✅ Conversión de SmartAssistence a Power BI completada correctamente")
+    st.warning(
+        "Antes de subir a la base de datos: descarga este archivo y súbelo tal cual. "
+        "No modifiques el nombre, no edites el contenido y no cambies la estructura del Excel."
+    )
     st.dataframe(df_final.head(20), use_container_width=True)
 
-    nombre = f"resultado_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    nombre_cuenta = obtener_nombre_cuenta(df_final)
+    fecha_hora = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nombre = f"{nombre_cuenta}_{fecha_hora}.xlsx"
+
     st.download_button(
-        "📥 Descargar archivo final",
+        "📥 Descargar archivo final para Power BI",
         df_to_xlsx_bytes(df_final),
         file_name=nombre,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
 
