@@ -34,6 +34,12 @@ def df_to_xlsx_bytes(df: pd.DataFrame) -> BytesIO:
     buf.seek(0)
     return buf
 
+def df_to_csv_bytes(df: pd.DataFrame) -> BytesIO:
+    buf = BytesIO()
+    df.to_csv(buf, index=False, encoding="utf-8-sig")
+    buf.seek(0)
+    return buf
+
 def normalizar(col: str) -> str:
     return (
         str(col)
@@ -60,7 +66,7 @@ def obtener_nombre_cuenta(df: pd.DataFrame) -> str:
                 return limpiar_nombre_archivo(serie.iloc[0])
     return "CUENTA_SIN_NOMBRE"
 
-# ===================== ENCABEZADOS BASE (SALIDA / ESQUEMA) =====================
+# ===================== ENCABEZADOS BASE =====================
 REQUERIDOS = [
     "NOMBRE_CLIENTE","NOMBRE_OPERACION","N_MUESTRA","CORRELATIVO","FECHA_MUESTREO","FECHA_INGRESO",
     "FECHA_RECEPCION","FECHA_INFORME","EDAD_COMPONENTE","UNIDAD_EDAD_COMPONENTE","EDAD_PRODUCTO",
@@ -97,7 +103,7 @@ REQUERIDOS = [
     "USUARIO","COMENTARIO_REPORTE","id_muestra"
 ]
 
-# ===================== ENCABEZADOS ESTADO (SALIDA / ESQUEMA) =====================
+# ===================== ENCABEZADOS ESTADO =====================
 NUEVAS_ESTADO = [
     "ESTADO_MUESTRA",
     "AGUA (IR) - 74",
@@ -188,7 +194,11 @@ def encontrar_columna_origen(cols_norm_map: dict, nombre_salida: str) -> str | N
 COLUMNAS_USADAS = REQUERIDOS + NUEVAS_ESTADO
 
 # ===================== CARGA DE ARCHIVOS =====================
-files = st.file_uploader("📤 Sube uno o varios Excel exportados desde SmartAssistence (.xlsx)", type="xlsx", accept_multiple_files=True)
+files = st.file_uploader(
+    "📤 Sube uno o varios Excel exportados desde SmartAssistence (.xlsx)",
+    type="xlsx",
+    accept_multiple_files=True
+)
 
 if files:
     dfs_out = []
@@ -207,7 +217,10 @@ if files:
 
         if faltantes:
             st.error(f"❌ {f.name} – Faltan encabezados requeridos")
-            st.dataframe(pd.DataFrame({"Encabezado faltante esperado en salida": faltantes}), use_container_width=True)
+            st.dataframe(
+                pd.DataFrame({"Encabezado faltante esperado en salida": faltantes}),
+                use_container_width=True
+            )
             st.stop()
 
         # -------- DETECCIÓN DE COLUMNAS CON DATOS NO USADAS --------
@@ -220,8 +233,10 @@ if files:
         for idx, c in enumerate(cols):
             if normalizar(c) in usadas_norm:
                 continue
+
             serie = df[c].astype(str).str.strip().replace({"": pd.NA, "nan": pd.NA})
             n = int(serie.notna().sum())
+
             if n > 0:
                 extras.append({
                     "Archivo": f.name,
@@ -234,7 +249,7 @@ if files:
             st.warning(f"⚠️ {f.name}: columnas con datos NO usadas en la salida")
             st.dataframe(pd.DataFrame(extras), use_container_width=True)
 
-        # -------- CONSTRUCCIÓN DEL EXCEL FINAL --------
+        # -------- CONSTRUCCIÓN DEL ARCHIVO FINAL --------
         df_out = pd.DataFrame()
 
         for col_salida in REQUERIDOS:
@@ -242,6 +257,7 @@ if files:
             df_out[col_salida] = df[col_origen]
 
         df_out.rename(columns={"ESTADO_REPORTE": "ESTADO"}, inplace=True)
+
         df_out["Archivo_Origen"] = f.name
 
         for col_salida in NUEVAS_ESTADO:
@@ -253,21 +269,36 @@ if files:
     df_final = pd.concat(dfs_out, ignore_index=True)
 
     st.success("✅ Conversión de SmartAssistence a Power BI completada correctamente")
+
     st.warning(
         "Antes de subir a la base de datos: descarga este archivo y súbelo tal cual. "
-        "No modifiques el nombre, no edites el contenido y no cambies la estructura del Excel."
+        "No modifiques el nombre, no edites el contenido y no cambies la estructura del archivo."
     )
+
     st.dataframe(df_final.head(20), use_container_width=True)
 
     nombre_cuenta = obtener_nombre_cuenta(df_final)
     fecha_hora = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nombre = f"{nombre_cuenta}_{fecha_hora}.xlsx"
 
-    st.download_button(
-        "📥 Descargar archivo final para Power BI",
-        df_to_xlsx_bytes(df_final),
-        file_name=nombre,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    nombre_excel = f"{nombre_cuenta}_{fecha_hora}.xlsx"
+    nombre_csv = f"{nombre_cuenta}_{fecha_hora}.csv"
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.download_button(
+            "📥 Descargar archivo final en Excel",
+            df_to_xlsx_bytes(df_final),
+            file_name=nombre_excel,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    with col2:
+        st.download_button(
+            "📥 Descargar archivo final en CSV",
+            df_to_csv_bytes(df_final),
+            file_name=nombre_csv,
+            mime="text/csv"
+        )
 
 
