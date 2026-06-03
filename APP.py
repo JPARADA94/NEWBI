@@ -31,6 +31,14 @@ def df_to_xlsx_bytes(df: pd.DataFrame) -> BytesIO:
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as w:
         df.to_excel(w, index=False, sheet_name="Sheet1")
+        ws = w.sheets["Sheet1"]
+        # Forzar formato texto en todas las celdas de datos (fila 2 en adelante)
+        # para evitar que openpyxl convierta "2.0" → 2.0, "15.0" → 15.0, etc.
+        for row in ws.iter_rows(min_row=2):
+            for cell in row:
+                if cell.value is not None:
+                    cell.number_format = "@"
+                    cell.value = str(cell.value)
     buf.seek(0)
     return buf
 
@@ -39,6 +47,22 @@ def df_to_csv_bytes(df: pd.DataFrame) -> BytesIO:
     df.to_csv(buf, index=False, encoding="utf-8-sig")
     buf.seek(0)
     return buf
+
+def limpiar_floats_enteros(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convierte valores tipo '2.0' → '2', '15.0' → '15' en todas las columnas.
+    Esto corrige el problema donde openpyxl (≥3.1) infiere floats desde strings
+    y los escribe como decimales, alterando los datos en Power BI.
+    Solo afecta strings que sean exactamente un entero con '.0' al final.
+    """
+    patron = re.compile(r"^-?\d+\.0$")
+    for col in df.columns:
+        df[col] = df[col].apply(
+            lambda x: str(int(float(x)))
+            if pd.notna(x) and patron.fullmatch(str(x).strip())
+            else x
+        )
+    return df
 
 def normalizar(col: str) -> str:
     return (
@@ -267,6 +291,7 @@ if files:
         dfs_out.append(df_out)
 
     df_final = pd.concat(dfs_out, ignore_index=True)
+    df_final = limpiar_floats_enteros(df_final)  # Limpia '2.0' → '2', '15.0' → '15', etc.
 
     st.success("✅ Conversión de SmartAssistence a Power BI completada correctamente")
 
